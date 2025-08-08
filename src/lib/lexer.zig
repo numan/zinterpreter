@@ -7,7 +7,7 @@ const TokenType = token.TokenType;
 
 const LexerError = error{UnexpectedCharacter};
 
-const Lexer = struct {
+pub const Lexer = struct {
     input: []const u8,
     position: usize = 0,
     read_position: usize = 0,
@@ -15,7 +15,7 @@ const Lexer = struct {
 
     const Self = @This();
 
-    fn init(input: []const u8) Lexer {
+    pub fn init(input: []const u8) Lexer {
         var lexer = Lexer{ .input = input };
         if (input.len > 0) {
             lexer.ch = input[0];
@@ -92,7 +92,7 @@ const Lexer = struct {
         return std.ascii.isDigit(ch);
     }
 
-    fn nextToken(self: *Self) Token {
+    pub fn nextToken(self: *Self) Token {
         self.skipWhitespace();
 
         if (self.ch == null) {
