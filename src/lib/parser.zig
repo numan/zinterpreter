@@ -10,7 +10,6 @@ pub const Parser = struct {
     lexer: *Lexer,
     current_token: Token,
     peek_token: Token,
-    statements: std.ArrayList(ast.StatementNode),
     program: ?*const ast.Program = null,
     allocator: std.mem.Allocator,
 
@@ -20,7 +19,7 @@ pub const Parser = struct {
         const token1 = lexer.nextToken();
         const token2 = lexer.nextToken();
 
-        return .{ .lexer = lexer, .current_token = token1, .peek_token = token2, .statements = .empty, .allocator = allocator };
+        return .{ .lexer = lexer, .current_token = token1, .peek_token = token2, .allocator = allocator };
     }
 
     pub fn parse(self: *Self) !*const ast.Program {
@@ -31,7 +30,7 @@ pub const Parser = struct {
             else => {
                 const statement = self.parseStatement();
                 if (statement) |stmt| {
-                    try program.statements.append(self.allocator, stmt);
+                    try program.addStatement(stmt);
                 }
                 self.nextToken();
                 continue :sw self.current_token.token_type;
@@ -63,15 +62,11 @@ pub const Parser = struct {
 
         const iden_token = self.current_token;
 
-        sw: switch (self.curTokenIs(TokenType.semicolon)) {
-            true => {
-                self.nextToken();
-                continue :sw self.curTokenIs(TokenType.semicolon);
-            },
-            else => {},
+        while (!self.curTokenIs(TokenType.semicolon)) {
+            self.nextToken();
         }
 
-        return ast.StatementNode.init(ast.StatementType{ .let = .{ .token = current_token, .name = .{ .token = TokenType.iden, .value = iden_token.ch } } });
+        return ast.StatementNode.init(ast.StatementType{ .let = .{ .token = current_token, .name = .{ .token_type = TokenType.iden, .value = iden_token.ch } } });
     }
 
     fn curTokenIs(self: *Self, tokenType: TokenType) bool {
@@ -107,9 +102,9 @@ test "parser" {
     ;
 
     const expected_ast = [_]struct { TokenType, []const u8 }{
-        .{ TokenType.iden, "x" },
-        .{ TokenType.iden, "y" },
-        .{ TokenType.iden, "foobar" },
+        .{ TokenType.let, "x" },
+        .{ TokenType.let, "y" },
+        .{ TokenType.let, "foobar" },
     };
 
     const allocator = std.testing.allocator;
@@ -121,9 +116,11 @@ test "parser" {
 
     for (expected_ast, 0..) |expected_output, i| {
         const stmt = program.statements.items[i];
+        const expected_token_type, const expected_name = expected_output;
         switch (stmt.statement) {
             .let => |let_stmt| {
-                try testing.expectEqualStrings(expected_output[1], let_stmt.name.value);
+                try testing.expectEqualStrings(expected_name, let_stmt.name.value);
+                try testing.expectEqual(expected_token_type, let_stmt.token.token_type);
             },
         }
     }

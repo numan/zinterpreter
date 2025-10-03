@@ -19,7 +19,7 @@ const ExpressionType = union(enum) {
 };
 
 const Identifier = struct {
-    token: TokenType,
+    token_type: TokenType,
     value: []const u8,
 };
 
@@ -77,6 +77,10 @@ pub const Program = struct {
 
     pub fn init(allocator: std.mem.Allocator) Program {
         return .{ .allocator = allocator, .statements = .empty };
+    }
+
+    pub fn addStatement(self: *Program, statement: StatementNode) !void {
+        try self.statements.append(self.allocator, statement);
     }
 
     pub fn deinit(self: *Program) void {
