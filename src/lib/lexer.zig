@@ -40,13 +40,11 @@ pub const Lexer = struct {
 
         if (self.ch == null) return error.UnexpectedCharacter;
 
-        return sw: switch (Lexer.isLetter(self.ch.?)) {
-            true => {
-                self.readCharacter();
-                continue :sw Lexer.isLetter(self.ch.?);
-            },
-            false => self.input[start..self.position],
-        };
+        while (Lexer.isLetter(self.ch.?)) {
+            self.readCharacter();
+            if (self.ch == null) return self.input[start..self.position];
+        }
+        return self.input[start..self.position];
     }
 
     fn readNumber(self: *Self) ![]const u8 {
@@ -54,24 +52,19 @@ pub const Lexer = struct {
 
         if (self.ch == null) return error.UnexpectedCharacter;
 
-        return sw: switch (Lexer.isDigit(self.ch.?)) {
-            true => {
-                self.readCharacter();
-                continue :sw Lexer.isDigit(self.ch.?);
-            },
-            false => self.input[start..self.position],
-        };
+        while (Lexer.isDigit(self.ch.?)) {
+            self.readCharacter();
+            if (self.ch == null) return self.input[start..self.position];
+        }
+        return self.input[start..self.position];
     }
 
     fn skipWhitespace(self: *Self) void {
         if (self.ch == null) return;
 
-        sw: switch (Lexer.isWhitespace(self.ch.?)) {
-            true => {
-                self.readCharacter();
-                continue :sw Lexer.isWhitespace(self.ch.?);
-            },
-            false => {},
+        while (Lexer.isWhitespace(self.ch.?)) {
+            self.readCharacter();
+            if (self.ch == null) return;
         }
     }
 

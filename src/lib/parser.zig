@@ -1,16 +1,17 @@
+const std = @import("std");
+const testing = std.testing;
+
+const ast = @import("./ast.zig");
 const Lexer = @import("./lexer.zig").Lexer;
 const Token = @import("./token.zig").Token;
 const TokenType = @import("./token.zig").TokenType;
-const ast = @import("./ast.zig");
-
-const std = @import("std");
-const testing = std.testing;
 
 pub const Parser = struct {
     lexer: *Lexer,
     current_token: Token,
     peek_token: Token,
     program: ?*const ast.Program = null,
+    errors: std.ArrayList([]const u8) = .empty,
     allocator: std.mem.Allocator,
 
     const Self = @This();
@@ -28,7 +29,7 @@ pub const Parser = struct {
         sw: switch (self.current_token.token_type) {
             TokenType.eof => break :sw,
             else => {
-                const statement = self.parseStatement();
+                const statement = try self.parseStatement();
                 if (statement) |stmt| {
                     try program.addStatement(stmt);
                 }
@@ -46,17 +47,17 @@ pub const Parser = struct {
         self.peek_token = self.lexer.nextToken();
     }
 
-    fn parseStatement(self: *Self) ?ast.StatementNode {
+    fn parseStatement(self: *Self) !?ast.StatementNode {
         return switch (self.current_token.token_type) {
-            TokenType.let => self.parseLetStatement(),
+            TokenType.let => try self.parseLetStatement(),
             else => null,
         };
     }
 
-    fn parseLetStatement(self: *Self) ?ast.StatementNode {
+    fn parseLetStatement(self: *Self) !?ast.StatementNode {
         const current_token = self.current_token;
 
-        if (!self.expectPeek(TokenType.iden)) {
+        if (!try self.expectPeek(TokenType.iden)) {
             return null;
         }
 
@@ -77,22 +78,53 @@ pub const Parser = struct {
         return self.peek_token.token_type == tokenType;
     }
 
-    fn expectPeek(self: *Self, tokenType: TokenType) bool {
+    fn expectPeek(self: *Self, tokenType: TokenType) !bool {
         if (self.peek_token.token_type == tokenType) {
             self.nextToken();
             return true;
         }
 
+        try self.peekError(tokenType);
         return false;
     }
+
+    fn peekError(self: *Self, tokenType: TokenType) !void {
+        const msg = try std.fmt.allocPrint(self.allocator, "Expected next token to be {}, got {}", .{ tokenType, self.peek_token.token_type });
+        try self.errors.append(self.allocator, msg);
+    }
+
+    pub fn allErrors(self: *Self) [][]const u8 {
+        return self.errors.items;
+    }
+
     pub fn deinit(self: *Self) void {
         if (self.program) |program| {
             const prog_mut = @constCast(program);
             prog_mut.deinit();
             self.allocator.destroy(prog_mut);
         }
+
+        for (self.errors.items) |err_msg| {
+            self.allocator.free(err_msg);
+        }
+        self.errors.deinit(self.allocator);
     }
 };
+
+test "parse error" {
+    const input =
+        \\let ;x 
+    ;
+
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    _ = try parser.parse();
+
+    try testing.expectEqual(1, parser.allErrors().len);
+    try testing.expectEqualStrings("Expected next token to be .iden, got .semicolon", parser.allErrors()[0]);
+}
 
 test "parser" {
     const input =
