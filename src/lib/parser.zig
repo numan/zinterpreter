@@ -63,11 +63,21 @@ pub const Parser = struct {
 
         const iden_token = self.current_token;
 
+        if (!try self.expectPeek(TokenType.assign)) {
+            return null;
+        }
+
         while (!self.curTokenIs(TokenType.semicolon)) {
             self.nextToken();
         }
 
-        return ast.StatementNode.init(ast.StatementType{ .let = .{ .token = current_token, .name = .{ .token_type = TokenType.iden, .value = iden_token.ch } } });
+        return ast.StatementNode.init(ast.StatementType{ .let = .{
+            .token = current_token,
+            .name = .{
+                .token_type = TokenType.iden,
+                .value = iden_token.ch,
+            },
+        } });
     }
 
     fn curTokenIs(self: *Self, tokenType: TokenType) bool {
@@ -113,20 +123,32 @@ pub const Parser = struct {
 
 test "parse error" {
     const input =
-        \\let ;x 
+        \\let x 5;
+        \\let = 10;
+        \\let 838383;
     ;
+
+    const expected_errors = [_][]const u8{
+        "Expected next token to be .assign, got .int",
+        "Expected next token to be .iden, got .assign",
+        "Expected next token to be .iden, got .int",
+    };
 
     var lexer = Lexer.init(input);
     var parser = Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
 
     _ = try parser.parse();
+    const errors = parser.allErrors();
+    std.debug.print("errors: {s}, {s}\n", .{ errors[0], errors[1] });
 
-    try testing.expectEqual(1, parser.allErrors().len);
-    try testing.expectEqualStrings("Expected next token to be .iden, got .semicolon", parser.allErrors()[0]);
+    try testing.expectEqual(3, errors.len);
+    for (expected_errors, 0..) |expected_error, i| {
+        try testing.expectEqualStrings(expected_error, errors[i]);
+    }
 }
 
-test "parser" {
+test "parser let" {
     const input =
         \\let x = 5;
         \\let y = 10;
