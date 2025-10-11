@@ -25,6 +25,12 @@ const Identifier = struct {
 
 pub const StatementType = union(enum) {
     let: LetStatement,
+    @"return": ReturnStatement,
+
+    const ReturnStatement = struct {
+        token: Token,
+        return_value: ?ExpressionNode = null,
+    };
 
     const LetStatement = struct {
         token: Token,

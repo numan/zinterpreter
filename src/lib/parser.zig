@@ -50,8 +50,25 @@ pub const Parser = struct {
     fn parseStatement(self: *Self) !?ast.StatementNode {
         return switch (self.current_token.token_type) {
             TokenType.let => try self.parseLetStatement(),
+            TokenType.@"return" => try self.parseReturnStatement(),
             else => null,
         };
+    }
+
+    fn parseReturnStatement(self: *Self) !?ast.StatementNode {
+        const current_token = self.current_token;
+
+        self.nextToken();
+
+        while (!self.curTokenIs(TokenType.semicolon)) {
+            self.nextToken();
+        }
+
+        return ast.StatementNode.init(ast.StatementType{
+            .@"return" = .{
+                .token = current_token,
+            },
+        });
     }
 
     fn parseLetStatement(self: *Self) !?ast.StatementNode {
@@ -121,7 +138,23 @@ pub const Parser = struct {
     }
 };
 
-test "parse error" {
+test "parse return" {
+    const input =
+        \\return 5;
+        \\return 10;
+        \\return 838383;
+    ;
+
+    const expected_number_of_statements = 3;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+
+    try testing.expectEqual(expected_number_of_statements, program.statements.items.len);
+}
+
+test "parse let error" {
     const input =
         \\let x 5;
         \\let = 10;
@@ -176,6 +209,7 @@ test "parser let" {
                 try testing.expectEqualStrings(expected_name, let_stmt.name.value);
                 try testing.expectEqual(expected_token_type, let_stmt.token.token_type);
             },
+            else => unreachable,
         }
     }
 }
