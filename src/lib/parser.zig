@@ -138,6 +138,26 @@ pub const Parser = struct {
     }
 };
 
+test "print statement node" {
+    var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer output_writer.deinit();
+
+    const statement_node: ast.StatementNode = .{ .statement = .{
+        .let = .{
+            .token = Token.init(.let, "let"),
+            .name = ast.Identifier.init("myVar"),
+            .value = ast.ExpressionNode.initIdentifier("myValue"),
+        },
+    } };
+
+    var let_statement: ast.StatementType.LetStatement = statement_node.statement.let;
+    var node = ast.Node.implBy(&let_statement);
+
+    try node.toString(&output_writer.writer);
+
+    try testing.expectEqualStrings("let myVar = myValue;", output_writer.written());
+}
+
 test "parse return" {
     const input =
         \\return 5;
@@ -173,7 +193,6 @@ test "parse let error" {
 
     _ = try parser.parse();
     const errors = parser.allErrors();
-    std.debug.print("errors: {s}, {s}\n", .{ errors[0], errors[1] });
 
     try testing.expectEqual(3, errors.len);
     for (expected_errors, 0..) |expected_error, i| {
