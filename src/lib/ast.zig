@@ -9,7 +9,7 @@ pub const Node = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
-    pub const VTable = struct { toString: *const fn (self: *anyopaque, writer: *std.Io.Writer) std.io.Writer.Error!void };
+    pub const VTable = struct { toString: *const fn (self: *anyopaque, writer: *std.Io.Writer) std.Io.Writer.Error!void };
 
     pub fn implBy(impl_obj: anytype) Node {
         const delegator = NodeDelegator(impl_obj);
@@ -21,7 +21,7 @@ pub const Node = struct {
         };
     }
 
-    pub fn toString(self: *Node, writer: *std.io.Writer) !void {
+    pub fn toString(self: *Node, writer: *std.Io.Writer) !void {
         try self.vtable.toString(self.ptr, writer);
     }
 };
@@ -29,7 +29,7 @@ pub const Node = struct {
 inline fn NodeDelegator(impl_obj: anytype) type {
     const ImplType = @TypeOf(impl_obj);
     return struct {
-        fn toString(self: *anyopaque, writer: *std.io.Writer) !void {
+        fn toString(self: *anyopaque, writer: *std.Io.Writer) !void {
             var impl: ImplType = @ptrCast(@alignCast(self));
             try impl.toString(writer);
         }
@@ -48,7 +48,7 @@ pub const Identifier = struct {
         return .{ .token_type = .iden, .value = value };
     }
 
-    pub fn toString(self: *Identifier, writer: *std.io.Writer) !void {
+    pub fn toString(self: *Identifier, writer: *std.Io.Writer) !void {
         try writer.print("{s}", .{self.value});
     }
 };
@@ -62,7 +62,7 @@ pub const StatementType = union(enum) {
         token: Token,
         expression: ExpressionNode,
 
-        pub fn toString(self: *ExpressionStatement, writer: *std.io.Writer) !void {
+        pub fn toString(self: *ExpressionStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} = {s};", .{ self.token.token_type.toString(), self.token.ch });
         }
     };
@@ -71,7 +71,7 @@ pub const StatementType = union(enum) {
         token: Token,
         return_value: ?ExpressionNode = null,
 
-        pub fn toString(self: *ReturnStatement, writer: *std.io.Writer) !void {
+        pub fn toString(self: *ReturnStatement, writer: *std.Io.Writer) !void {
             const val: []const u8 = exp: {
                 if (self.value) |value| {
                     break :exp value.toString();
@@ -86,7 +86,7 @@ pub const StatementType = union(enum) {
         name: Identifier,
         value: ?ExpressionNode = null,
 
-        pub fn toString(self: *const LetStatement, writer: *std.io.Writer) !void {
+        pub fn toString(self: *const LetStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{self.token.token_type.toString()});
 
             try @constCast(&self.name).*.toString(writer);
