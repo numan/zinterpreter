@@ -150,7 +150,7 @@ test "print let statement" {
         },
     } };
 
-    var let_statement = statement_node.statement.let;
+    const let_statement = statement_node.statement.let;
     var node = ast.Node.implBy(&let_statement);
 
     try node.toString(&output_writer.writer);
@@ -169,7 +169,7 @@ test "print return statement" {
         },
     } };
 
-    var return_statement: ast.StatementType.ReturnStatement = return_node.statement.@"return";
+    const return_statement: ast.StatementType.ReturnStatement = return_node.statement.@"return";
     var node = ast.Node.implBy(&return_statement);
 
     try node.toString(&output_writer.writer);
