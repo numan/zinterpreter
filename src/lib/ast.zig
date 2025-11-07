@@ -99,6 +99,7 @@ pub const StatementType = union(enum) {
                 _ = try writer.write("");
             }
             _ = try writer.write(";");
+            try writer.flush();
         }
     };
 };
