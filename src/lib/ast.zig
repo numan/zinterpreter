@@ -58,7 +58,7 @@ pub const StatementType = union(enum) {
     @"return": ReturnStatement,
     expression: ExpressionStatement,
 
-    const ExpressionStatement = struct {
+    pub const ExpressionStatement = struct {
         token: Token,
         expression: ExpressionNode,
 
@@ -67,17 +67,23 @@ pub const StatementType = union(enum) {
         }
     };
 
-    const ReturnStatement = struct {
+    pub const ReturnStatement = struct {
         token: Token,
         return_value: ?ExpressionNode = null,
 
         pub fn toString(self: *ReturnStatement, writer: *std.Io.Writer) !void {
-            const val: []const u8 = exp: {
-                if (self.value) |value| {
-                    break :exp value.toString();
-                } else break :exp "";
-            };
-            try writer.print("{s} {s};", .{ self.token.token_type.toString(), val });
+            try writer.print("{s} ", .{
+                self.token.token_type.toString(),
+            });
+
+            if (self.return_value) |*value| {
+                _ = try @constCast(value).toString(writer);
+            } else {
+                _ = try writer.write("");
+            }
+
+            _ = try writer.write(";");
+            try writer.flush();
         }
     };
 

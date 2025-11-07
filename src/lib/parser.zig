@@ -138,7 +138,7 @@ pub const Parser = struct {
     }
 };
 
-test "print statement node" {
+test "print let statement" {
     var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer output_writer.deinit();
 
@@ -150,12 +150,31 @@ test "print statement node" {
         },
     } };
 
-    var let_statement: ast.StatementType.LetStatement = statement_node.statement.let;
+    var let_statement = statement_node.statement.let;
     var node = ast.Node.implBy(&let_statement);
 
     try node.toString(&output_writer.writer);
 
     try testing.expectEqualStrings("let myVar = myValue;", output_writer.written());
+}
+
+test "print return statement" {
+    var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer output_writer.deinit();
+
+    const return_node: ast.StatementNode = .{ .statement = .{
+        .@"return" = .{
+            .token = Token.init(.@"return", "return"),
+            .return_value = ast.ExpressionNode.initIdentifier("myValue"),
+        },
+    } };
+
+    var return_statement: ast.StatementType.ReturnStatement = return_node.statement.@"return";
+    var node = ast.Node.implBy(&return_statement);
+
+    try node.toString(&output_writer.writer);
+
+    try testing.expectEqualStrings("return myValue;", output_writer.written());
 }
 
 test "parse return" {
