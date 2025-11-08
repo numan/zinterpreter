@@ -58,11 +58,15 @@ pub const StatementType = union(enum) {
     expression: ExpressionStatement,
 
     pub const ExpressionStatement = struct {
-        token: Token,
-        expression: ExpressionNode,
+        expression: ?ExpressionNode,
 
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
-            try writer.print("{s} = {s};", .{ self.token.token_type.toString(), self.token.ch });
+            if (self.expression) |*value| {
+                try value.toString(writer);
+            } else {
+                _ = try writer.write("");
+            }
+            try writer.flush();
         }
     };
 

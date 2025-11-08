@@ -177,6 +177,25 @@ test "print return statement" {
     try testing.expectEqualStrings("return myValue;", output_writer.written());
 }
 
+test "print expression statement" {
+    var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer output_writer.deinit();
+
+    const expression_node: ast.StatementNode = .{
+        .statement = .{
+            .expression = .{
+                .expression = ast.ExpressionNode.initIdentifier("myValue"),
+            },
+        },
+    };
+
+    const expression_statement = expression_node.statement.expression;
+    var node = ast.Node.implBy(&expression_statement);
+    try node.toString(&output_writer.writer);
+
+    try testing.expectEqualStrings("myValue", output_writer.written());
+}
+
 test "parse return" {
     const input =
         \\return 5;
