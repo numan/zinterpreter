@@ -1,6 +1,5 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
-const SignlyLinkedList = @import("utils/SinglyLinkedList.zig");
 const token = @import("./token.zig");
 const Token = token.Token;
 const TokenType = token.TokenType;
