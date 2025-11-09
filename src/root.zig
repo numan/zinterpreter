@@ -11,3 +11,8 @@ comptime {
     _ = @import("lib/lexer.zig");
     _ = @import("lib/parser.zig");
 }
+
+// All the tests go here
+comptime {
+    _ = @import("lib/parser_test.zig");
+}

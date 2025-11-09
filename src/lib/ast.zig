@@ -4,6 +4,16 @@ const token = @import("./token.zig");
 const Token = token.Token;
 const TokenType = token.TokenType;
 
+pub const Precedence = enum(u8) {
+    Lowest = 1,
+    Equals,
+    LessGreater,
+    Sum,
+    Product,
+    Prefix,
+    Call,
+};
+
 pub const Node = struct {
     ptr: *const anyopaque,
     vtable: *const VTable,
