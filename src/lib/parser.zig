@@ -12,8 +12,8 @@ const ParsingFn = struct {
     interface: *const Interface,
 
     pub const Interface = struct {
-        prefixParseFn: *const fn (self: *const anyopaque, parser: *const Parser) ?ast.StatementType.ExpressionStatement,
-        infixParseFn: *const fn (self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) ?ast.StatementType.ExpressionStatement,
+        prefixParseFn: *const fn (self: *const anyopaque, parser: *const Parser) error{ InvalidCharacter, Overflow }!?ast.StatementType.ExpressionStatement,
+        infixParseFn: *const fn (self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) error{ InvalidCharacter, Overflow }!?ast.StatementType.ExpressionStatement,
     };
 
     pub fn implBy(impl_obj: anytype) ParsingFn {
@@ -35,11 +35,11 @@ const ParsingFn = struct {
         return self.interface.hasInfixParseFn(self.ptr);
     }
 
-    pub fn prefixParseFn(self: *const ParsingFn, parser: *const Parser) ?ast.StatementType.ExpressionStatement {
+    pub fn prefixParseFn(self: *const ParsingFn, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
         return self.interface.prefixParseFn(self.ptr, parser);
     }
 
-    pub fn infixParseFn(self: *const ParsingFn, left: ast.ExpressionNode, parser: *const Parser) ?ast.StatementType.ExpressionStatement {
+    pub fn infixParseFn(self: *const ParsingFn, left: ast.ExpressionNode, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
         return self.interface.infixParseFn(self.ptr, left, parser);
     }
 };
@@ -66,14 +66,14 @@ inline fn ParsingFnDelegator(impl_obj: anytype) type {
             return hasFunction("infixParseFn");
         }
 
-        fn prefixParseFn(self: *const anyopaque, parser: *const Parser) ?ast.StatementType.ExpressionStatement {
+        fn prefixParseFn(self: *const anyopaque, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
             if (comptime !hasPrefixParseFn()) return null;
 
             const impl: ImplType = @ptrCast(@alignCast(self));
             return impl.*.prefixParseFn(parser);
         }
 
-        fn infixParseFn(self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) ?ast.StatementType.ExpressionStatement {
+        fn infixParseFn(self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
             if (comptime !hasInfixParseFn()) return null;
 
             const impl: ImplType = @ptrCast(@alignCast(self));
@@ -83,9 +83,18 @@ inline fn ParsingFnDelegator(impl_obj: anytype) type {
 }
 const IdentifierParser = struct {
     const Self = @This();
-    fn prefixParseFn(self: *const Self, parser: *const Parser) ast.StatementType.ExpressionStatement {
+    fn prefixParseFn(self: *const Self, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
         _ = self;
         return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token.ch);
+    }
+}{};
+
+const IntegerLiteralParser = struct {
+    const Self = @This();
+    fn prefixParseFn(self: *const Self, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+        _ = self;
+        const val = try std.fmt.parseInt(i64, parser.current_token.ch, 10);
+        return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 }{};
 
@@ -114,6 +123,7 @@ pub const Parser = struct {
             .parsing_fns = blk: {
                 var map = ParsingFnMap.init(allocator);
                 try map.put(TokenType.iden, ParsingFn.implBy(&IdentifierParser));
+                try map.put(TokenType.int, ParsingFn.implBy(&IntegerLiteralParser));
                 break :blk map;
             },
         };
@@ -160,10 +170,10 @@ pub const Parser = struct {
         return expression;
     }
 
-    fn parseExpression(self: *Self, precedence: Precedence) ?ast.StatementNode {
+    fn parseExpression(self: *Self, precedence: Precedence) !?ast.StatementNode {
         _ = precedence;
         const parsingFns = self.parsing_fns.get(self.current_token.token_type) orelse return null;
-        const expression = parsingFns.prefixParseFn(self) orelse return null;
+        const expression = try parsingFns.prefixParseFn(self) orelse return null;
 
         return ast.StatementNode.init(.{
             .expression = expression,

@@ -159,7 +159,33 @@ test "basic identifier parsing" {
 
     const identifier = switch (expression_statement.expression.?.expression) {
         .identifier => |*value| value,
+        else => unreachable,
     };
 
     try testing.expectEqualStrings("foobar", identifier.value);
+}
+
+test "basic int parsing" {
+    const input = "5;";
+
+    const allocator = std.testing.allocator;
+
+    var lexer = Lexer.init(input);
+    var parser = try Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+
+    try testing.expect(program.statements.items.len == 1);
+
+    const expression_statement = switch (program.statements.items[0].statement) {
+        .expression => |value| value,
+        else => unreachable,
+    };
+
+    const int_literal = switch (expression_statement.expression.?.expression) {
+        .integer_literal => |*value| value,
+        else => unreachable,
+    };
+
+    try testing.expectEqualStrings("5", int_literal.*.tokenLiteral());
 }
