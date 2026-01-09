@@ -1,24 +1,19 @@
 const std = @import("std");
-const ArrayList = std.ArrayList;
 const token = @import("./token.zig");
+const parsing_utils = @import("./parsing_utils.zig");
+
+const ArrayList = std.ArrayList;
 const Token = token.Token;
 const TokenType = token.TokenType;
-
-pub const Precedence = enum(u8) {
-    Lowest = 1,
-    Equals,
-    LessGreater,
-    Sum,
-    Product,
-    Prefix,
-    Call,
-};
+const Precedence = parsing_utils.Precedence;
 
 pub const Node = struct {
     ptr: *const anyopaque,
     vtable: *const VTable,
 
-    pub const VTable = struct { toString: *const fn (self: *const anyopaque, writer: *std.Io.Writer) std.Io.Writer.Error!void };
+    pub const VTable = struct {
+        toString: *const fn (self: *const anyopaque, writer: *std.Io.Writer) std.Io.Writer.Error!void,
+    };
 
     pub fn implBy(impl_obj: anytype) Node {
         const delegator = NodeDelegator(impl_obj);
@@ -69,6 +64,13 @@ pub const StatementType = union(enum) {
 
     pub const ExpressionStatement = struct {
         expression: ?ExpressionNode,
+
+        const Self = @This();
+        pub fn initIdentifierExpression(value: []const u8) Self {
+            return .{
+                .expression = ExpressionNode.initIdentifier(value),
+            };
+        }
 
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
             if (self.expression) |*value| {
@@ -129,6 +131,10 @@ pub const StatementNode = struct {
     pub fn init(statementType: StatementType) StatementNode {
         return .{ .statement = statementType };
     }
+
+    pub fn initExpressionStatement(tkn: Token) StatementNode {
+        return .{ .statement = StatementType.initExpressionStatement(tkn) };
+    }
 };
 
 pub const ExpressionNode = struct {
@@ -153,6 +159,13 @@ pub const Program = struct {
 
     pub fn init(allocator: std.mem.Allocator) Program {
         return .{ .allocator = allocator, .statements = .empty };
+    }
+
+    pub fn toString(self: *const Program, writer: *std.Io.Writer) !void {
+        for (self.statements.items) |*stmt| {
+            try stmt.*.toString(writer);
+            writer.write("\n");
+        }
     }
 
     pub fn addStatement(self: *Program, statement: StatementNode) !void {

@@ -74,7 +74,7 @@ test "parse return" {
 
     const expected_number_of_statements = 3;
     var lexer = Lexer.init(input);
-    var parser = Parser.init(testing.allocator, &lexer);
+    var parser = try Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -95,7 +95,7 @@ test "parse let error" {
     };
 
     var lexer = Lexer.init(input);
-    var parser = Parser.init(testing.allocator, &lexer);
+    var parser = try Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
 
     _ = try parser.parse();
@@ -123,7 +123,7 @@ test "parser let" {
     const allocator = std.testing.allocator;
 
     var lexer = Lexer.init(input);
-    var parser = Parser.init(allocator, &lexer);
+    var parser = try Parser.init(allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -146,7 +146,7 @@ test "basic identifier parsing" {
     const allocator = std.testing.allocator;
 
     var lexer = Lexer.init(input);
-    var parser = Parser.init(allocator, &lexer);
+    var parser = try Parser.init(allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 

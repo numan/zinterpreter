@@ -9,6 +9,7 @@ pub const repl = @import("repl/repl.zig");
 
 comptime {
     _ = @import("lib/lexer.zig");
+    _ = @import("lib/parsing_utils.zig");
     _ = @import("lib/parser.zig");
 }
 
