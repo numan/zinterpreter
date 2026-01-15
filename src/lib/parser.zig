@@ -104,7 +104,7 @@ pub const Parser = struct {
     lexer: *Lexer,
     current_token: Token,
     peek_token: Token,
-    program: ?*const ast.Program = null,
+    program: ?*ast.Program = null,
     errors: std.ArrayList([]const u8) = .empty,
     allocator: std.mem.Allocator,
     parsing_fns: ParsingFnMap,
@@ -251,9 +251,8 @@ pub const Parser = struct {
 
     pub fn deinit(self: *Self) void {
         if (self.program) |program| {
-            const prog_mut = @constCast(program);
-            prog_mut.deinit();
-            self.allocator.destroy(prog_mut);
+            program.*.deinit();
+            self.allocator.destroy(program);
         }
 
         for (self.errors.items) |err_msg| {
