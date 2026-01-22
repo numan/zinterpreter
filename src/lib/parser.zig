@@ -12,8 +12,8 @@ const ParsingFn = struct {
     interface: *const Interface,
 
     pub const Interface = struct {
-        prefixParseFn: *const fn (self: *const anyopaque, parser: *const Parser) error{ InvalidCharacter, Overflow }!?ast.StatementType.ExpressionStatement,
-        infixParseFn: *const fn (self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) error{ InvalidCharacter, Overflow }!?ast.StatementType.ExpressionStatement,
+        prefixParseFn: *const fn (self: *const anyopaque, parser: *Parser) error{ InvalidCharacter, Overflow, OutOfMemory }!?ast.StatementType.ExpressionStatement,
+        infixParseFn: *const fn (self: *const anyopaque, left: ast.ExpressionNode, parser: *Parser) error{ InvalidCharacter, Overflow, OutOfMemory }!?ast.StatementType.ExpressionStatement,
     };
 
     pub fn implBy(impl_obj: anytype) ParsingFn {
@@ -35,11 +35,11 @@ const ParsingFn = struct {
         return self.interface.hasInfixParseFn(self.ptr);
     }
 
-    pub fn prefixParseFn(self: *const ParsingFn, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+    pub fn prefixParseFn(self: *const ParsingFn, parser: *Parser) !?ast.StatementType.ExpressionStatement {
         return self.interface.prefixParseFn(self.ptr, parser);
     }
 
-    pub fn infixParseFn(self: *const ParsingFn, left: ast.ExpressionNode, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+    pub fn infixParseFn(self: *const ParsingFn, left: ast.ExpressionNode, parser: *Parser) !?ast.StatementType.ExpressionStatement {
         return self.interface.infixParseFn(self.ptr, left, parser);
     }
 };
@@ -66,14 +66,14 @@ inline fn ParsingFnDelegator(impl_obj: anytype) type {
             return hasFunction("infixParseFn");
         }
 
-        fn prefixParseFn(self: *const anyopaque, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+        fn prefixParseFn(self: *const anyopaque, parser: *Parser) error{ InvalidCharacter, Overflow, OutOfMemory }!?ast.StatementType.ExpressionStatement {
             if (comptime !hasPrefixParseFn()) return null;
 
             const impl: ImplType = @ptrCast(@alignCast(self));
             return impl.*.prefixParseFn(parser);
         }
 
-        fn infixParseFn(self: *const anyopaque, left: ast.ExpressionNode, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+        fn infixParseFn(self: *const anyopaque, left: ast.ExpressionNode, parser: *Parser) error{ InvalidCharacter, Overflow, OutOfMemory }!?ast.StatementType.ExpressionStatement {
             if (comptime !hasInfixParseFn()) return null;
 
             const impl: ImplType = @ptrCast(@alignCast(self));
@@ -83,7 +83,7 @@ inline fn ParsingFnDelegator(impl_obj: anytype) type {
 }
 const IdentifierParser = struct {
     const Self = @This();
-    fn prefixParseFn(self: *const Self, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+    fn prefixParseFn(self: *const Self, parser: *Parser) !?ast.StatementType.ExpressionStatement {
         _ = self;
         return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token.ch);
     }
@@ -91,10 +91,38 @@ const IdentifierParser = struct {
 
 const IntegerLiteralParser = struct {
     const Self = @This();
-    fn prefixParseFn(self: *const Self, parser: *const Parser) !?ast.StatementType.ExpressionStatement {
+    fn prefixParseFn(self: *const Self, parser: *Parser) !?ast.StatementType.ExpressionStatement {
         _ = self;
         const val = try std.fmt.parseInt(i64, parser.current_token.ch, 10);
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
+    }
+}{};
+
+const BangParser = struct {
+    const Self = @This();
+    fn prefixParseFn(self: *const Self, parser: *Parser) !?ast.StatementType.ExpressionStatement {
+        _ = self;
+        const cur_token = parser.current_token;
+        parser.nextToken();
+
+        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, blk: {
+            const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
+            break :blk &right;
+        });
+    }
+}{};
+
+const MinusParser = struct {
+    const Self = @This();
+    fn prefixParseFn(self: *const Self, parser: *Parser) !?ast.StatementType.ExpressionStatement {
+        _ = self;
+        const cur_token = parser.current_token;
+        parser.nextToken();
+
+        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, blk: {
+            const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
+            break :blk &right;
+        });
     }
 }{};
 
@@ -124,6 +152,8 @@ pub const Parser = struct {
                 var map = ParsingFnMap.init(allocator);
                 try map.put(TokenType.iden, ParsingFn.implBy(&IdentifierParser));
                 try map.put(TokenType.int, ParsingFn.implBy(&IntegerLiteralParser));
+                try map.put(TokenType.bang, ParsingFn.implBy(&BangParser));
+                try map.put(TokenType.minus, ParsingFn.implBy(&MinusParser));
                 break :blk map;
             },
         };
@@ -172,12 +202,22 @@ pub const Parser = struct {
 
     fn parseExpression(self: *Self, precedence: Precedence) !?ast.StatementNode {
         _ = precedence;
-        const parsingFns = self.parsing_fns.get(self.current_token.token_type) orelse return null;
-        const expression = try parsingFns.prefixParseFn(self) orelse return null;
+        const parsingFns = self.parsing_fns.get(self.current_token.token_type);
+        if (parsingFns) |*parsingFn| {
+            const expression = try parsingFn.*.prefixParseFn(self) orelse unreachable;
 
-        return ast.StatementNode.init(.{
-            .expression = expression,
-        });
+            return ast.StatementNode.init(.{
+                .expression = expression,
+            });
+        } else {
+            try self.noPrefixParseFnError(self.current_token.token_type);
+            return null;
+        }
+    }
+
+    inline fn parseSubExpression(self: *Self, precedence: Precedence) !?ast.StatementType.ExpressionStatement {
+        const node = try self.parseExpression(precedence) orelse return null;
+        return node.statement.expression;
     }
 
     fn parseReturnStatement(self: *Self) !?ast.StatementNode {
@@ -230,18 +270,25 @@ pub const Parser = struct {
         return self.peek_token.token_type == tokenType;
     }
 
-    fn expectPeek(self: *Self, tokenType: TokenType) !bool {
-        if (self.peek_token.token_type == tokenType) {
+    fn expectPeek(self: *Self, token_type: TokenType) !bool {
+        if (self.peek_token.token_type == token_type) {
             self.nextToken();
             return true;
         }
 
-        try self.peekError(tokenType);
+        try self.peekError(token_type);
         return false;
     }
 
-    fn peekError(self: *Self, tokenType: TokenType) !void {
-        const msg = try std.fmt.allocPrint(self.allocator, "Expected next token to be {}, got {}", .{ tokenType, self.peek_token.token_type });
+    fn peekError(self: *Self, token_type: TokenType) !void {
+        const msg = try std.fmt.allocPrint(self.allocator, "Expected next token to be {}, got {}", .{ token_type, self.peek_token.token_type });
+        try self.errors.append(self.allocator, msg);
+    }
+
+    fn noPrefixParseFnError(self: *Self, token_type: TokenType) !void {
+        const msg = try std.fmt.allocPrint(self.allocator, "No prefix parse fn found for token type {}", .{
+            token_type,
+        });
         try self.errors.append(self.allocator, msg);
     }
 

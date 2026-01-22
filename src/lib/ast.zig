@@ -76,7 +76,7 @@ inline fn ExpNodeDelegator(impl_obj: anytype) type {
 
         pub fn tokenLiteral(self: *const anyopaque) []const u8 {
             const impl: ImplType = @ptrCast(@alignCast(self));
-            try impl.*.tokenLiteral();
+            return impl.*.tokenLiteral();
         }
     };
 }
@@ -84,6 +84,7 @@ inline fn ExpNodeDelegator(impl_obj: anytype) type {
 const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
+    prefix_expression: PrefixExpression,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) !void {
         switch (self.*) {
@@ -92,6 +93,37 @@ const ExpressionType = union(enum) {
             },
         }
     }
+
+    pub const PrefixExpression = struct {
+        const Self = @This();
+        token: Token,
+        operator: []const u8,
+        right: *const StatementType.ExpressionStatement,
+
+        pub fn init(obj: Token, right: *const StatementType.ExpressionStatement) Self {
+            return .{
+                .token = obj,
+                .operator = obj.ch,
+                .right = right,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            const exp_node = switch (self.right.*.expression.?.expression) {
+                inline else => |*val| ExpNode.implBy(val),
+            };
+            try writer.print("({s}", .{
+                self.operator,
+            });
+            try exp_node.toString(writer);
+            try writer.print(")", .{});
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 
     pub const IntegerLiteral = struct {
         const Self = @This();
@@ -152,6 +184,12 @@ pub const StatementType = union(enum) {
         pub fn initIntegerLiteralExpression(tkn: Token, val: i64) Self {
             return .{
                 .expression = ExpressionNode.initIntegerLiteral(tkn, val),
+            };
+        }
+
+        pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionNode.initPrefixExpression(tkn, right),
             };
         }
 
@@ -229,6 +267,10 @@ pub const ExpressionNode = struct {
 
     pub fn initIntegerLiteral(tkn: Token, val: i64) ExpressionNode {
         return .{ .expression = .{ .integer_literal = ExpressionType.IntegerLiteral.init(tkn, val) } };
+    }
+
+    pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) ExpressionNode {
+        return .{ .expression = .{ .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right) } };
     }
 
     pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) !void {

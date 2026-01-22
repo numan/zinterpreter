@@ -91,6 +91,7 @@ test "parse let error" {
     const expected_errors = [_][]const u8{
         "Expected next token to be .assign, got .int",
         "Expected next token to be .iden, got .assign",
+        "No prefix parse fn found for token type .assign",
         "Expected next token to be .iden, got .int",
     };
 
@@ -101,7 +102,7 @@ test "parse let error" {
     _ = try parser.parse();
     const errors = parser.allErrors();
 
-    try testing.expectEqual(3, errors.len);
+    try testing.expectEqual(4, errors.len);
     for (expected_errors, 0..) |expected_error, i| {
         try testing.expectEqualStrings(expected_error, errors[i]);
     }
@@ -188,4 +189,78 @@ test "basic int parsing" {
     };
 
     try testing.expectEqualStrings("5", int_literal.*.tokenLiteral());
+}
+
+fn testIntegerLiteral(val: *ast.ExpressionType, literal_value: u64) !void {
+    switch (val.expression) {
+        .integer_literal => {
+            try testing.expectEqual(literal_value, val.expression.integer_literal.value);
+
+            const expNode = ast.ExpNode.implBy(&val.expression.integer_literal);
+            try testing.expectEqualStrings(std.fmt.comptimePrint("{}", .{literal_value}), expNode.tokenLiteral());
+        },
+        else => {
+            std.debug.print("Expected an integer literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
+fn checkParserErrors(parser: *Parser) !void {
+    testing.expectEqual(0, parser.allErrors().len) catch |err| {
+        const errors = parser.allErrors();
+        for (errors) |e| {
+            std.debug.print("{s}\n", .{e});
+        }
+        return err;
+    };
+}
+
+test "parse prefix expressions" {
+    const cases = [_]struct {
+        input: []const u8,
+        operator: []const u8,
+        int_value: u64,
+    }{
+        .{
+            .input = "!5",
+            .operator = "!",
+            .int_value = 5,
+        },
+        .{
+            .input = "-15",
+            .operator = "-",
+            .int_value = 15,
+        },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = try Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.*.statements.items.len);
+
+        switch (program.statements.items[0].statement) {
+            .expression => {},
+            else => {
+                std.debug.print("Expected an expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        }
+
+        switch (program.statements.items[0].statement.expression.expression.?.expression) {
+            .prefix_expression => {},
+            else => {
+                std.debug.print("Expected a prefix expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        }
+        //TODO: Need to confirm prefix expression once the types are in place
+    }
 }
