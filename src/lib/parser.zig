@@ -12,33 +12,6 @@ pub const ParseError = error{ InvalidCharacter, Overflow, OutOfMemory };
 const PrefixParseFn = *const fn (*Parser) ParseError!?ast.StatementType.ExpressionStatement;
 const InfixParseFn = *const fn (ast.ExpressionNode, *Parser) ParseError!?ast.StatementType.ExpressionStatement;
 
-fn parseIdentifier(parser: *Parser) ParseError!?ast.StatementType.ExpressionStatement {
-    return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token.ch);
-}
-
-fn parseIntegerLiteral(parser: *Parser) ParseError!?ast.StatementType.ExpressionStatement {
-    const val = try std.fmt.parseInt(u64, parser.current_token.ch, 10);
-    return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
-}
-
-fn parsePrefixOperator(parser: *Parser) ParseError!?ast.StatementType.ExpressionStatement {
-    const cur_token = parser.current_token;
-    parser.nextToken();
-    const right = try parser.parseSubExpression(.prefix) orelse unreachable;
-    const right_ptr = try parser.allocator.create(ast.StatementType.ExpressionStatement);
-    right_ptr.* = right;
-    return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
-}
-
-inline fn getPrefixParseFn(token_type: TokenType) ?PrefixParseFn {
-    return switch (token_type) {
-        .iden => parseIdentifier,
-        .int => parseIntegerLiteral,
-        .bang, .minus => parsePrefixOperator,
-        else => null,
-    };
-}
-
 pub const Parser = struct {
     lexer: *Lexer,
     current_token: Token,
@@ -99,7 +72,7 @@ pub const Parser = struct {
 
     fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementNode {
         _ = precedence;
-        if (getPrefixParseFn(self.current_token.token_type)) |prefixFn| {
+        if (self.getPrefixParseFn(self.current_token.token_type)) |prefixFn| {
             const expression = try prefixFn(self) orelse unreachable;
 
             return ast.StatementNode.init(.{
@@ -190,6 +163,34 @@ pub const Parser = struct {
 
     pub fn allErrors(self: *Self) [][]const u8 {
         return self.errors.items;
+    }
+
+    fn parseIdentifier(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token.ch);
+    }
+
+    fn parseIntegerLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const val = try std.fmt.parseInt(u64, parser.current_token.ch, 10);
+        return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
+    }
+
+    fn parsePrefixOperator(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const cur_token = parser.current_token;
+        parser.nextToken();
+        const right = try parser.parseSubExpression(.prefix) orelse unreachable;
+        const right_ptr = try parser.allocator.create(ast.StatementType.ExpressionStatement);
+        right_ptr.* = right;
+        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
+    }
+
+    inline fn getPrefixParseFn(self: *const Self, token_type: TokenType) ?PrefixParseFn {
+        _ = self;
+        return switch (token_type) {
+            .iden => Self.parseIdentifier,
+            .int => Self.parseIntegerLiteral,
+            .bang, .minus => Self.parsePrefixOperator,
+            else => null,
+        };
     }
 
     pub fn deinit(self: *Self) void {
