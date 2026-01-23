@@ -81,7 +81,7 @@ inline fn ExpNodeDelegator(impl_obj: anytype) type {
     };
 }
 
-const ExpressionType = union(enum) {
+pub const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
     prefix_expression: PrefixExpression,
@@ -128,9 +128,9 @@ const ExpressionType = union(enum) {
     pub const IntegerLiteral = struct {
         const Self = @This();
         token: Token,
-        value: i64,
+        value: u64,
 
-        pub fn init(obj: Token, val: i64) Self {
+        pub fn init(obj: Token, val: u64) Self {
             return .{
                 .token = obj,
                 .value = val,
@@ -181,7 +181,7 @@ pub const StatementType = union(enum) {
             };
         }
 
-        pub fn initIntegerLiteralExpression(tkn: Token, val: i64) Self {
+        pub fn initIntegerLiteralExpression(tkn: Token, val: u64) Self {
             return .{
                 .expression = ExpressionNode.initIntegerLiteral(tkn, val),
             };
@@ -200,6 +200,18 @@ pub const StatementType = union(enum) {
                 _ = try writer.write("");
             }
             try writer.flush();
+        }
+
+        pub fn deinit(self: *const ExpressionStatement, allocator: std.mem.Allocator) void {
+            if (self.expression) |exp_node| {
+                switch (exp_node.expression) {
+                    .prefix_expression => |prefix| {
+                        prefix.right.deinit(allocator);
+                        allocator.destroy(prefix.right);
+                    },
+                    else => {},
+                }
+            }
         }
     };
 
@@ -265,7 +277,7 @@ pub const ExpressionNode = struct {
         return .{ .expression = .{ .identifier = Identifier.init(value) } };
     }
 
-    pub fn initIntegerLiteral(tkn: Token, val: i64) ExpressionNode {
+    pub fn initIntegerLiteral(tkn: Token, val: u64) ExpressionNode {
         return .{ .expression = .{ .integer_literal = ExpressionType.IntegerLiteral.init(tkn, val) } };
     }
 
@@ -302,6 +314,12 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *Program) void {
+        for (self.statements.items) |stmt| {
+            switch (stmt.statement) {
+                .expression => |exp_stmt| exp_stmt.deinit(self.allocator),
+                else => {},
+            }
+        }
         self.statements.deinit(self.allocator);
     }
 };

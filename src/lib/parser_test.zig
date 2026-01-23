@@ -191,13 +191,16 @@ test "basic int parsing" {
     try testing.expectEqualStrings("5", int_literal.*.tokenLiteral());
 }
 
-fn testIntegerLiteral(val: *ast.ExpressionType, literal_value: u64) !void {
-    switch (val.expression) {
-        .integer_literal => {
-            try testing.expectEqual(literal_value, val.expression.integer_literal.value);
+fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: u64) !void {
+    switch (val.*) {
+        .integer_literal => |exp| {
+            try testing.expectEqual(literal_value, exp.value);
 
-            const expNode = ast.ExpNode.implBy(&val.expression.integer_literal);
-            try testing.expectEqualStrings(std.fmt.comptimePrint("{}", .{literal_value}), expNode.tokenLiteral());
+            const expNode = ast.ExpNode.implBy(&exp);
+
+            var buf: [21]u8 = undefined;
+            const expected = try std.fmt.bufPrint(&buf, "{}", .{literal_value});
+            try testing.expectEqualStrings(expected, expNode.tokenLiteral());
         },
         else => {
             std.debug.print("Expected an integer literal. Got something else.", .{});
@@ -254,13 +257,20 @@ test "parse prefix expressions" {
             },
         }
 
-        switch (program.statements.items[0].statement.expression.expression.?.expression) {
+        const parsed_statement = program.statements.items[0].statement.expression;
+
+        switch (parsed_statement.expression.?.expression) {
             .prefix_expression => {},
             else => {
                 std.debug.print("Expected a prefix expression. Got something else.", .{});
                 return error.TestUnexpectedResult;
             },
         }
-        //TODO: Need to confirm prefix expression once the types are in place
+
+        const prefix_expression = parsed_statement.expression.?.expression.prefix_expression;
+        const right_expression = prefix_expression.right.expression.?.expression;
+
+        try testing.expectEqualStrings(case.operator, prefix_expression.operator);
+        try testIntegerLiteral(&right_expression, case.int_value);
     }
 }

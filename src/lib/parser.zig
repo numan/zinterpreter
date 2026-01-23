@@ -93,7 +93,7 @@ const IntegerLiteralParser = struct {
     const Self = @This();
     fn prefixParseFn(self: *const Self, parser: *Parser) !?ast.StatementType.ExpressionStatement {
         _ = self;
-        const val = try std.fmt.parseInt(i64, parser.current_token.ch, 10);
+        const val = try std.fmt.parseInt(u64, parser.current_token.ch, 10);
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 }{};
@@ -105,10 +105,10 @@ const BangParser = struct {
         const cur_token = parser.current_token;
         parser.nextToken();
 
-        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, blk: {
-            const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
-            break :blk &right;
-        });
+        const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
+        const right_ptr = try parser.allocator.create(ast.StatementType.ExpressionStatement);
+        right_ptr.* = right;
+        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
     }
 }{};
 
@@ -119,10 +119,10 @@ const MinusParser = struct {
         const cur_token = parser.current_token;
         parser.nextToken();
 
-        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, blk: {
-            const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
-            break :blk &right;
-        });
+        const right = try parser.parseSubExpression(.Prefix) orelse unreachable;
+        const right_ptr = try parser.allocator.create(ast.StatementType.ExpressionStatement);
+        right_ptr.* = right;
+        return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
     }
 }{};
 
