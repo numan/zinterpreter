@@ -20,7 +20,7 @@ test "print let statement" {
     } };
 
     const let_statement = statement_node.statement.let;
-    var node = ast.Node.implBy(&let_statement);
+    const node = ast.Node.implBy(&let_statement);
 
     try node.toString(&output_writer.writer);
 
@@ -39,7 +39,7 @@ test "print return statement" {
     } };
 
     const return_statement: ast.StatementType.ReturnStatement = return_node.statement.@"return";
-    var node = ast.Node.implBy(&return_statement);
+    const node = ast.Node.implBy(&return_statement);
 
     try node.toString(&output_writer.writer);
 
@@ -59,7 +59,7 @@ test "print expression statement" {
     };
 
     const expression_statement = expression_node.statement.expression;
-    var node = ast.Node.implBy(&expression_statement);
+    const node = ast.Node.implBy(&expression_statement);
     try node.toString(&output_writer.writer);
 
     try testing.expectEqualStrings("myValue", output_writer.written());
@@ -74,7 +74,7 @@ test "parse return" {
 
     const expected_number_of_statements = 3;
     var lexer = Lexer.init(input);
-    var parser = try Parser.init(testing.allocator, &lexer);
+    var parser = Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -96,7 +96,7 @@ test "parse let error" {
     };
 
     var lexer = Lexer.init(input);
-    var parser = try Parser.init(testing.allocator, &lexer);
+    var parser = Parser.init(testing.allocator, &lexer);
     defer parser.deinit();
 
     _ = try parser.parse();
@@ -124,7 +124,7 @@ test "parser let" {
     const allocator = std.testing.allocator;
 
     var lexer = Lexer.init(input);
-    var parser = try Parser.init(allocator, &lexer);
+    var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -147,7 +147,7 @@ test "basic identifier parsing" {
     const allocator = std.testing.allocator;
 
     var lexer = Lexer.init(input);
-    var parser = try Parser.init(allocator, &lexer);
+    var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -172,7 +172,7 @@ test "basic int parsing" {
     const allocator = std.testing.allocator;
 
     var lexer = Lexer.init(input);
-    var parser = try Parser.init(allocator, &lexer);
+    var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
     const program = try parser.parse();
 
@@ -196,11 +196,10 @@ fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: u64) !void 
         .integer_literal => |exp| {
             try testing.expectEqual(literal_value, exp.value);
 
-            const expNode = ast.ExpNode.implBy(&exp);
-
             var buf: [21]u8 = undefined;
             const expected = try std.fmt.bufPrint(&buf, "{}", .{literal_value});
-            try testing.expectEqualStrings(expected, expNode.tokenLiteral());
+            const exp_node = ast.ExpNode.implBy(&exp);
+            try testing.expectEqualStrings(expected, exp_node.tokenLiteral());
         },
         else => {
             std.debug.print("Expected an integer literal. Got something else.", .{});
@@ -240,7 +239,7 @@ test "parse prefix expressions" {
     for (cases) |case| {
         const allocator = std.testing.allocator;
         var lexer = Lexer.init(case.input);
-        var parser = try Parser.init(allocator, &lexer);
+        var parser = Parser.init(allocator, &lexer);
         defer parser.deinit();
 
         const program = try parser.parse();

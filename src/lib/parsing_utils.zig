@@ -1,9 +1,9 @@
 pub const Precedence = enum {
-    Lowest,
-    Equals, // ==
-    LessGreater, // <, >
-    Sum, // +
-    Product, // *
-    Prefix, // -X or !X
-    Call, // myFunction(X)
+    lowest,
+    equals, // ==
+    less_greater, // <, >
+    sum, // +
+    product, // *
+    prefix, // -X or !X
+    call, // myFunction(X)
 };

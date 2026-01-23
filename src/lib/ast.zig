@@ -48,12 +48,16 @@ pub const ExpNode = struct {
         toString: *const fn (self: *const anyopaque, writer: *std.Io.Writer) std.Io.Writer.Error!void,
         tokenLiteral: *const fn (self: *const anyopaque) []const u8,
     };
+
     pub fn implBy(impl_obj: anytype) ExpNode {
         const delegator = ExpNodeDelegator(impl_obj);
-        return .{ .ptr = impl_obj, .vtable = &.{
-            .toString = delegator.toString,
-            .tokenLiteral = delegator.tokenLiteral,
-        } };
+        return .{
+            .ptr = impl_obj,
+            .vtable = &.{
+                .toString = delegator.toString,
+                .tokenLiteral = delegator.tokenLiteral,
+            },
+        };
     }
 
     pub fn toString(self: *const ExpNode, writer: *std.Io.Writer) !void {
@@ -67,7 +71,6 @@ pub const ExpNode = struct {
 
 inline fn ExpNodeDelegator(impl_obj: anytype) type {
     const ImplType = @TypeOf(impl_obj);
-
     return struct {
         pub fn toString(self: *const anyopaque, writer: *std.Io.Writer) !void {
             const impl: ImplType = @ptrCast(@alignCast(self));
@@ -109,13 +112,13 @@ pub const ExpressionType = union(enum) {
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
-            const exp_node = switch (self.right.*.expression.?.expression) {
-                inline else => |*val| ExpNode.implBy(val),
-            };
-            try writer.print("({s}", .{
-                self.operator,
-            });
-            try exp_node.toString(writer);
+            try writer.print("({s}", .{self.operator});
+            if (self.right.*.expression) |exp| {
+                const exp_node = switch (exp.expression) {
+                    inline else => |*val| ExpNode.implBy(val),
+                };
+                try exp_node.toString(writer);
+            }
             try writer.print(")", .{});
             try writer.flush();
         }
@@ -287,9 +290,7 @@ pub const ExpressionNode = struct {
 
     pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) !void {
         switch (self.expression) {
-            else => |*val| {
-                return @constCast(val).*.toString(writer);
-            },
+            inline else => |*val| try val.toString(writer),
         }
     }
 };
