@@ -273,3 +273,94 @@ test "parse prefix expressions" {
         try testIntegerLiteral(&right_expression, case.int_value);
     }
 }
+
+test "parse infix expressions" {
+    const cases = [_]struct {
+        input: []const u8,
+        leftValue: u64,
+        operator: []const u8,
+        rightValue: u64,
+    }{
+        .{
+            .input = "5 + 5;",
+            .leftValue = 5,
+            .operator = "+",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 - 5;",
+            .leftValue = 5,
+            .operator = "-",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 * 5;",
+            .leftValue = 5,
+            .operator = "*",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 / 5;",
+            .leftValue = 5,
+            .operator = "/",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 > 5;",
+            .leftValue = 5,
+            .operator = ">",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 < 5;",
+            .leftValue = 5,
+            .operator = "<",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 == 5;",
+            .leftValue = 5,
+            .operator = "==",
+            .rightValue = 5,
+        },
+        .{
+            .input = "5 != 5;",
+            .leftValue = 5,
+            .operator = "!=",
+            .rightValue = 5,
+        },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.*.statements.items.len);
+
+        const statement = switch (program.statements.items[0].statement) {
+            .expression => |*val| val,
+            else => {
+                std.debug.print("Expected an expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        const infix_expression = switch (statement.expression.?.expression) {
+            .infix_expression => |*val| val,
+            else => {
+                std.debug.print("Expected an infix expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        try testIntegerLiteral(&infix_expression.left.expression.?.expression, case.leftValue);
+        try testing.expectEqualStrings(case.operator, infix_expression.operator);
+        try testIntegerLiteral(&infix_expression.right.expression.?.expression, case.rightValue);
+    }
+}

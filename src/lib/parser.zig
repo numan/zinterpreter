@@ -10,7 +10,7 @@ const Precedence = @import("./parsing_utils.zig").Precedence;
 pub const ParseError = error{ InvalidCharacter, Overflow, OutOfMemory };
 
 const PrefixParseFn = *const fn (*Parser) ParseError!?ast.StatementType.ExpressionStatement;
-const InfixParseFn = *const fn (ast.ExpressionNode, *Parser) ParseError!?ast.StatementType.ExpressionStatement;
+const InfixParseFn = *const fn (*Parser, *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement;
 
 pub const Parser = struct {
     lexer: *Lexer,
@@ -62,22 +62,36 @@ pub const Parser = struct {
     }
 
     fn parseExpressionStatement(self: *Self) ParseError!?ast.StatementNode {
-        const expression = self.parseExpression(.lowest);
+        const expression = try self.parseExpression(.lowest);
         if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
         }
 
-        return expression;
+        if (expression) |expr| {
+            return ast.StatementNode.init(ast.StatementType{
+                .expression = expr,
+            });
+        }
+
+        return null;
     }
 
-    fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementNode {
-        _ = precedence;
-        if (self.getPrefixParseFn(self.current_token.token_type)) |prefixFn| {
-            const expression = try prefixFn(self) orelse unreachable;
+    fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementType.ExpressionStatement {
+        if (self.getPrefixParseFn(self.current_token.token_type)) |prefix_fn| {
+            const left = try prefix_fn(self) orelse unreachable;
 
-            return ast.StatementNode.init(.{
-                .expression = expression,
-            });
+            if (self.peek_token.token_type != .semicolon and @intFromEnum(precedence) < @intFromEnum(self.peekPrecedence())) {
+                const infix_fn = self.getInixParseFn(self.peek_token.token_type) orelse return left;
+
+                self.nextToken();
+
+                const left_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
+                left_ptr.* = left;
+                const infix_left = try infix_fn(self, left_ptr);
+                return infix_left;
+            } else {
+                return left;
+            }
         } else {
             try self.noPrefixParseFnError(self.current_token.token_type);
             return null;
@@ -85,8 +99,7 @@ pub const Parser = struct {
     }
 
     fn parseSubExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementType.ExpressionStatement {
-        const node = try self.parseExpression(precedence) orelse return null;
-        return node.statement.expression;
+        return try self.parseExpression(precedence) orelse return null;
     }
 
     fn parseReturnStatement(self: *Self) ParseError!?ast.StatementNode {
@@ -183,12 +196,50 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
     }
 
+    fn parseInfixExpression(self: *Self, left: *const ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        const precedence = self.curPrecedence();
+        self.nextToken();
+        const right = try self.parseExpression(precedence) orelse unreachable;
+        const right_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
+        right_ptr.* = right;
+
+        return ast.StatementType.ExpressionStatement.initInfixExpression(current_token, left, right_ptr);
+    }
+
+    pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
+        _ = self;
+        return switch (token_type) {
+            .eq, .not_eq => .equals,
+            .lt, .gt => .less_greater,
+            .plus, .minus => .sum,
+            .slash, .asterisk => .product,
+            else => .lowest,
+        };
+    }
+
+    pub fn peekPrecedence(self: *const Self) Precedence {
+        return self.getPrecedence(self.peek_token.token_type);
+    }
+
+    pub fn curPrecedence(self: *const Self) Precedence {
+        return self.getPrecedence(self.current_token.token_type);
+    }
+
     inline fn getPrefixParseFn(self: *const Self, token_type: TokenType) ?PrefixParseFn {
         _ = self;
         return switch (token_type) {
             .iden => Self.parseIdentifier,
             .int => Self.parseIntegerLiteral,
-            .bang, .minus => Self.parsePrefixOperator,
+            inline .bang, .minus => Self.parsePrefixOperator,
+            else => null,
+        };
+    }
+
+    inline fn getInixParseFn(self: *const Self, token_type: TokenType) ?InfixParseFn {
+        _ = self;
+        return switch (token_type) {
+            inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt => Self.parseInfixExpression,
             else => null,
         };
     }

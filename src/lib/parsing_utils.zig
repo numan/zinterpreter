@@ -1,4 +1,4 @@
-pub const Precedence = enum {
+pub const Precedence = enum(u3) {
     lowest,
     equals, // ==
     less_greater, // <, >

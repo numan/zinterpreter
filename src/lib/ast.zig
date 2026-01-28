@@ -88,6 +88,7 @@ pub const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
     prefix_expression: PrefixExpression,
+    infix_expression: InfixExpression,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) !void {
         switch (self.*) {
@@ -96,6 +97,50 @@ pub const ExpressionType = union(enum) {
             },
         }
     }
+
+    pub const InfixExpression = struct {
+        const Self = @This();
+        token: Token,
+        left: *const StatementType.ExpressionStatement,
+        right: *const StatementType.ExpressionStatement,
+        operator: []const u8,
+
+        pub fn init(obj: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) Self {
+            return .{
+                .token = obj,
+                .operator = obj.ch,
+                .left = left,
+                .right = right,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write("(");
+
+            if (self.left.*.expression) |left_expression| {
+                const exp_node = switch (left_expression.expression) {
+                    inline else => |*val| ExpNode.implBy(val),
+                };
+                try exp_node.toString(writer);
+            }
+            _ = try writer.print(" {s} ", .{self.token.ch});
+
+            if (self.right.*.expression) |right_expression| {
+                const exp_node = switch (right_expression.expression) {
+                    inline else => |*val| ExpNode.implBy(val),
+                };
+                try exp_node.toString(writer);
+            }
+
+            _ = try writer.write(")");
+
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 
     pub const PrefixExpression = struct {
         const Self = @This();
@@ -196,6 +241,12 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initInfixExpression(tkn: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionNode.initInfixExpression(tkn, left, right),
+            };
+        }
+
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
             if (self.expression) |*value| {
                 try value.toString(writer);
@@ -211,6 +262,12 @@ pub const StatementType = union(enum) {
                     .prefix_expression => |prefix| {
                         prefix.right.deinit(allocator);
                         allocator.destroy(prefix.right);
+                    },
+                    .infix_expression => |infix| {
+                        infix.left.deinit(allocator);
+                        allocator.destroy(infix.left);
+                        infix.right.deinit(allocator);
+                        allocator.destroy(infix.right);
                     },
                     else => {},
                 }
@@ -267,10 +324,6 @@ pub const StatementNode = struct {
     pub fn init(statementType: StatementType) StatementNode {
         return .{ .statement = statementType };
     }
-
-    pub fn initExpressionStatement(tkn: Token) StatementNode {
-        return .{ .statement = StatementType.initExpressionStatement(tkn) };
-    }
 };
 
 pub const ExpressionNode = struct {
@@ -286,6 +339,10 @@ pub const ExpressionNode = struct {
 
     pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) ExpressionNode {
         return .{ .expression = .{ .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right) } };
+    }
+
+    pub fn initInfixExpression(tkn: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) ExpressionNode {
+        return .{ .expression = .{ .infix_expression = ExpressionType.InfixExpression.init(tkn, left, right) } };
     }
 
     pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) !void {
