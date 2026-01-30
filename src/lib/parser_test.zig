@@ -158,12 +158,7 @@ test "basic identifier parsing" {
         else => unreachable,
     };
 
-    const identifier = switch (expression_statement.expression.?.expression) {
-        .identifier => |*value| value,
-        else => unreachable,
-    };
-
-    try testing.expectEqualStrings("foobar", identifier.value);
+    try testIdentifier(&expression_statement.expression.?.expression, "foobar");
 }
 
 test "basic int parsing" {
@@ -183,12 +178,7 @@ test "basic int parsing" {
         else => unreachable,
     };
 
-    const int_literal = switch (expression_statement.expression.?.expression) {
-        .integer_literal => |*value| value,
-        else => unreachable,
-    };
-
-    try testing.expectEqualStrings("5", int_literal.*.tokenLiteral());
+    try testIntegerLiteral(&expression_statement.expression.?.expression, 5);
 }
 
 fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: u64) !void {
@@ -203,6 +193,52 @@ fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: u64) !void 
         },
         else => {
             std.debug.print("Expected an integer literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
+const ExpectedValue = union(enum) {
+    integer: u64,
+    string: []const u8,
+};
+
+fn testIdentifier(val: *const ast.ExpressionType, literal_value: []const u8) !void {
+    switch (val.*) {
+        .identifier => |*exp| {
+            try testing.expectEqualStrings(literal_value, exp.*.value);
+        },
+        else => {
+            std.debug.print("Expected identifier. Got something else", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
+fn testLiteralExpression(exp: *const ast.ExpressionNode, expected: ExpectedValue) !void {
+    switch (expected) {
+        .integer => |val| try testIntegerLiteral(&exp.expression, val),
+        .string => |val| try testIdentifier(&exp.expression, val),
+    }
+}
+
+fn testInfixExpression(exp: *const ast.ExpressionType, left: ExpectedValue, operator: []const u8, right: ExpectedValue) !void {
+    switch (exp.*) {
+        .infix_expression => |infix_exp| {
+            if (infix_exp.left.expression) |*left_exp| {
+                try testLiteralExpression(left_exp, left);
+            } else {
+                return error.TestUnexpectedResult;
+            }
+            try testing.expectEqualStrings(operator, infix_exp.operator);
+            if (infix_exp.right.expression) |*right_exp| {
+                try testLiteralExpression(right_exp, right);
+            } else {
+                return error.TestUnexpectedResult;
+            }
+        },
+        else => {
+            std.debug.print("Expected infix expression. Got something else", .{});
             return error.TestUnexpectedResult;
         },
     }
@@ -425,16 +461,6 @@ test "parse infix expressions" {
             },
         };
 
-        const infix_expression = switch (statement.expression.?.expression) {
-            .infix_expression => |*val| val,
-            else => {
-                std.debug.print("Expected an infix expression. Got something else.", .{});
-                return error.TestUnexpectedResult;
-            },
-        };
-
-        try testIntegerLiteral(&infix_expression.left.expression.?.expression, case.leftValue);
-        try testing.expectEqualStrings(case.operator, infix_expression.operator);
-        try testIntegerLiteral(&infix_expression.right.expression.?.expression, case.rightValue);
+        try testInfixExpression(&statement.expression.?.expression, .{ .integer = case.leftValue }, case.operator, .{ .integer = case.rightValue });
     }
 }
