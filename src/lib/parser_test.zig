@@ -212,7 +212,7 @@ fn checkParserErrors(parser: *Parser) !void {
     testing.expectEqual(0, parser.allErrors().len) catch |err| {
         const errors = parser.allErrors();
         for (errors) |e| {
-            std.debug.print("{s}\n", .{e});
+            std.debug.print("Found Error: {s}\n", .{e});
         }
         return err;
     };
@@ -271,6 +271,80 @@ test "parse prefix expressions" {
 
         try testing.expectEqualStrings(case.operator, prefix_expression.operator);
         try testIntegerLiteral(&right_expression, case.int_value);
+    }
+}
+
+test "infix operator precedence" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+        expected_items: usize = 1,
+    }{ .{
+        .input = "-a * b",
+        .expected = "((-a) * b)",
+    }, .{
+        .input = "!-a",
+        .expected = "(!(-a))",
+    }, .{
+        .input = "a + b + c",
+        .expected = "((a + b) + c)",
+    }, .{
+        .input = "a + b - c",
+        .expected = "((a + b) - c)",
+    }, .{
+        .input = "a * b * c",
+        .expected = "((a * b) * c)",
+    }, .{
+        .input = "a * b / c",
+        .expected = "((a * b) / c)",
+    }, .{
+        .input = "a + b / c",
+        .expected = "(a + (b / c))",
+    }, .{
+        .input = "a + b * c + d / e - f",
+        .expected = "(((a + (b * c)) + (d / e)) - f)",
+    }, .{
+        .input = "3 + 4; -5 * 5",
+        .expected = "(3 + 4)((-5) * 5)",
+        .expected_items = 2,
+    }, .{
+        .input = "5 > 4 == 3 < 4",
+        .expected = "((5 > 4) == (3 < 4))",
+    }, .{
+        .input = "5 < 4 != 3 > 4",
+        .expected = "((5 < 4) != (3 > 4))",
+    }, .{
+        .input = "3 + 4 * 5 == 3 * 1 + 4 * 5",
+        .expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+    } };
+
+    for (cases) |case| {
+        const allocator = testing.allocator;
+
+        var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+        defer output_writer.deinit();
+
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(case.expected_items, program.*.statements.items.len);
+
+        switch (program.statements.items[0].statement) {
+            .expression => {},
+            else => {
+                std.debug.print("Expected an expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        }
+
+        try program.toString(&output_writer.writer);
+
+        try testing.expectEqualStrings(case.expected, output_writer.written());
     }
 }
 

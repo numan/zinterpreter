@@ -324,6 +324,12 @@ pub const StatementNode = struct {
     pub fn init(statementType: StatementType) StatementNode {
         return .{ .statement = statementType };
     }
+
+    pub fn toString(self: *const StatementNode, writer: *std.Io.Writer) !void {
+        switch (self.statement) {
+            inline else => |*val| try val.toString(writer),
+        }
+    }
 };
 
 pub const ExpressionNode = struct {
@@ -363,7 +369,6 @@ pub const Program = struct {
     pub fn toString(self: *const Program, writer: *std.Io.Writer) !void {
         for (self.statements.items) |*stmt| {
             try stmt.*.toString(writer);
-            writer.write("\n");
         }
     }
 

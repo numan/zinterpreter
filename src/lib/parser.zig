@@ -78,20 +78,18 @@ pub const Parser = struct {
 
     fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementType.ExpressionStatement {
         if (self.getPrefixParseFn(self.current_token.token_type)) |prefix_fn| {
-            const left = try prefix_fn(self) orelse unreachable;
+            var left = try prefix_fn(self) orelse unreachable;
 
-            if (self.peek_token.token_type != .semicolon and @intFromEnum(precedence) < @intFromEnum(self.peekPrecedence())) {
+            while (self.peek_token.token_type != .semicolon and @intFromEnum(precedence) < @intFromEnum(self.peekPrecedence())) {
                 const infix_fn = self.getInixParseFn(self.peek_token.token_type) orelse return left;
 
                 self.nextToken();
 
                 const left_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
                 left_ptr.* = left;
-                const infix_left = try infix_fn(self, left_ptr);
-                return infix_left;
-            } else {
-                return left;
+                left = try infix_fn(self, left_ptr) orelse return left;
             }
+            return left;
         } else {
             try self.noPrefixParseFnError(self.current_token.token_type);
             return null;
