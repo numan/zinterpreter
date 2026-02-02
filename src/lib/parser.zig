@@ -185,6 +185,11 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 
+    fn parseBooleanLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const val = if (std.mem.eql(u8, parser.current_token.ch, "true")) true else false;
+        return ast.StatementType.ExpressionStatement.initBooleanLiteralExpression(parser.current_token, val);
+    }
+
     fn parsePrefixOperator(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
         const cur_token = parser.current_token;
         parser.nextToken();
@@ -229,6 +234,7 @@ pub const Parser = struct {
         return switch (token_type) {
             .iden => Self.parseIdentifier,
             .int => Self.parseIntegerLiteral,
+            inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             else => null,
         };

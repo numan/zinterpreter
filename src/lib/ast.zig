@@ -87,6 +87,7 @@ inline fn ExpNodeDelegator(impl_obj: anytype) type {
 pub const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
+    boolean_literal: BooleanLiteral,
     prefix_expression: PrefixExpression,
     infix_expression: InfixExpression,
 
@@ -97,6 +98,25 @@ pub const ExpressionType = union(enum) {
             },
         }
     }
+
+    pub const BooleanLiteral = struct {
+        const Self = @This();
+        token: Token,
+        value: bool,
+
+        pub fn init(obj: Token, val: bool) Self {
+            return .{ .token = obj, .value = val };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write(self.tokenLiteral());
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 
     pub const InfixExpression = struct {
         const Self = @This();
@@ -247,6 +267,12 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initBooleanLiteralExpression(tkn: Token, value: bool) Self {
+            return .{
+                .expression = ExpressionNode.initBooleanLiteral(tkn, value),
+            };
+        }
+
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
             if (self.expression) |*value| {
                 try value.toString(writer);
@@ -336,19 +362,43 @@ pub const ExpressionNode = struct {
     expression: ExpressionType,
 
     pub fn initIdentifier(value: []const u8) ExpressionNode {
-        return .{ .expression = .{ .identifier = Identifier.init(value) } };
+        return .{
+            .expression = .{
+                .identifier = Identifier.init(value),
+            },
+        };
     }
 
     pub fn initIntegerLiteral(tkn: Token, val: u64) ExpressionNode {
-        return .{ .expression = .{ .integer_literal = ExpressionType.IntegerLiteral.init(tkn, val) } };
+        return .{
+            .expression = .{
+                .integer_literal = ExpressionType.IntegerLiteral.init(tkn, val),
+            },
+        };
     }
 
     pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) ExpressionNode {
-        return .{ .expression = .{ .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right) } };
+        return .{
+            .expression = .{
+                .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right),
+            },
+        };
     }
 
     pub fn initInfixExpression(tkn: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) ExpressionNode {
-        return .{ .expression = .{ .infix_expression = ExpressionType.InfixExpression.init(tkn, left, right) } };
+        return .{
+            .expression = .{
+                .infix_expression = ExpressionType.InfixExpression.init(tkn, left, right),
+            },
+        };
+    }
+
+    pub fn initBooleanLiteral(tkn: Token, val: bool) ExpressionNode {
+        return .{
+            .expression = .{
+                .boolean_literal = ExpressionType.BooleanLiteral.init(tkn, val),
+            },
+        };
     }
 
     pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) !void {
