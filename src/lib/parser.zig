@@ -203,11 +203,23 @@ pub const Parser = struct {
         const current_token = self.current_token;
         const precedence = self.curPrecedence();
         self.nextToken();
-        const right = try self.parseExpression(precedence) orelse unreachable;
+        const right = try self.parseExpression(precedence) orelse return null;
         const right_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
         right_ptr.* = right;
 
         return ast.StatementType.ExpressionStatement.initInfixExpression(current_token, left, right_ptr);
+    }
+
+    fn parseGroupedExpression(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        self.nextToken();
+
+        const exp = try self.parseExpression(.lowest) orelse return null;
+
+        if (!try self.expectPeek(TokenType.rparen)) {
+            return null;
+        }
+
+        return exp;
     }
 
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
@@ -234,6 +246,7 @@ pub const Parser = struct {
         return switch (token_type) {
             .iden => Self.parseIdentifier,
             .int => Self.parseIntegerLiteral,
+            .lparen => Self.parseGroupedExpression,
             inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             else => null,
