@@ -90,14 +90,60 @@ pub const ExpressionType = union(enum) {
     boolean_literal: BooleanLiteral,
     prefix_expression: PrefixExpression,
     infix_expression: InfixExpression,
+    if_expression: IfExpression,
 
-    pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) !void {
+    pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
             inline else => |*val| {
                 try val.toString(writer);
             },
         }
     }
+
+    pub const IfExpression = struct {
+        const Self = @This();
+        token: Token,
+        condition: *StatementType.ExpressionStatement,
+        consequence: StatementType.BlockStatement,
+        alternative: ?StatementType.BlockStatement,
+
+        pub fn init(
+            tkn: Token,
+            cond: *StatementType.ExpressionStatement,
+            cons: StatementType.BlockStatement,
+            alt: ?StatementType.BlockStatement,
+        ) Self {
+            return .{
+                .token = tkn,
+                .condition = cond,
+                .consequence = cons,
+                .alternative = alt,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            try writer.print("if", .{});
+            if (self.condition.*.expression) |cond_exp| {
+                const exp_node = switch (cond_exp.expression) {
+                    inline else => |*val| ExpNode.implBy(val),
+                };
+                try exp_node.toString(writer);
+            }
+            try writer.print(" ", .{});
+
+            try self.consequence.toString(writer);
+
+            if (self.alternative) |alt_block| {
+                _ = try writer.write("else");
+                try alt_block.toString(writer);
+            }
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 
     pub const BooleanLiteral = struct {
         const Self = @This();
@@ -121,11 +167,11 @@ pub const ExpressionType = union(enum) {
     pub const InfixExpression = struct {
         const Self = @This();
         token: Token,
-        left: *const StatementType.ExpressionStatement,
-        right: *const StatementType.ExpressionStatement,
+        left: *StatementType.ExpressionStatement,
+        right: *StatementType.ExpressionStatement,
         operator: []const u8,
 
-        pub fn init(obj: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) Self {
+        pub fn init(obj: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) Self {
             return .{
                 .token = obj,
                 .operator = obj.ch,
@@ -166,9 +212,9 @@ pub const ExpressionType = union(enum) {
         const Self = @This();
         token: Token,
         operator: []const u8,
-        right: *const StatementType.ExpressionStatement,
+        right: *StatementType.ExpressionStatement,
 
-        pub fn init(obj: Token, right: *const StatementType.ExpressionStatement) Self {
+        pub fn init(obj: Token, right: *StatementType.ExpressionStatement) Self {
             return .{
                 .token = obj,
                 .operator = obj.ch,
@@ -237,11 +283,54 @@ pub const StatementType = union(enum) {
     let: LetStatement,
     @"return": ReturnStatement,
     expression: ExpressionStatement,
+    block: BlockStatement,
+
+    pub const BlockStatement = struct {
+        token: Token,
+        statements: ArrayList(StatementNode) = .empty,
+        allocator: std.mem.Allocator,
+
+        const Self = @This();
+
+        pub fn init(tkn: Token, allocator: std.mem.Allocator) BlockStatement {
+            return .{
+                .token = tkn,
+                .statements = .empty,
+                .allocator = allocator,
+            };
+        }
+
+        pub fn addStatement(self: *Self, stmt: StatementNode) !void {
+            try self.statements.append(self.allocator, stmt);
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            for (self.statements.items) |*stmt| {
+                try stmt.*.toString(writer);
+            }
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            for (self.statements.items) |*stmt| {
+                switch (stmt.statement) {
+                    .expression => |*exp_stmt| exp_stmt.deinit(allocator),
+                    else => {},
+                }
+            }
+            self.statements.deinit(self.allocator);
+        }
+    };
 
     pub const ExpressionStatement = struct {
         expression: ?ExpressionNode,
 
         const Self = @This();
+
+        pub fn initIfExpression(tkn: Token, condition: *ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) Self {
+            return .{
+                .expression = ExpressionNode.initIfExpression(tkn, condition, consequence, alternative),
+            };
+        }
 
         pub fn initIdentifierExpression(value: []const u8) Self {
             return .{
@@ -255,13 +344,13 @@ pub const StatementType = union(enum) {
             };
         }
 
-        pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) Self {
+        pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) Self {
             return .{
                 .expression = ExpressionNode.initPrefixExpression(tkn, right),
             };
         }
 
-        pub fn initInfixExpression(tkn: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) Self {
+        pub fn initInfixExpression(tkn: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) Self {
             return .{
                 .expression = ExpressionNode.initInfixExpression(tkn, left, right),
             };
@@ -282,18 +371,26 @@ pub const StatementType = union(enum) {
             try writer.flush();
         }
 
-        pub fn deinit(self: *const ExpressionStatement, allocator: std.mem.Allocator) void {
-            if (self.expression) |exp_node| {
+        pub fn deinit(self: *ExpressionStatement, allocator: std.mem.Allocator) void {
+            if (self.expression) |*exp_node| {
                 switch (exp_node.expression) {
-                    .prefix_expression => |prefix| {
+                    .prefix_expression => |*prefix| {
                         prefix.right.deinit(allocator);
                         allocator.destroy(prefix.right);
                     },
-                    .infix_expression => |infix| {
+                    .infix_expression => |*infix| {
                         infix.left.deinit(allocator);
                         allocator.destroy(infix.left);
                         infix.right.deinit(allocator);
                         allocator.destroy(infix.right);
+                    },
+                    .if_expression => |*if_exp| {
+                        if_exp.condition.deinit(allocator);
+                        allocator.destroy(if_exp.condition);
+                        if_exp.consequence.deinit(allocator);
+                        if (if_exp.alternative) |*alt| {
+                            alt.deinit(allocator);
+                        }
                     },
                     else => {},
                 }
@@ -351,7 +448,7 @@ pub const StatementNode = struct {
         return .{ .statement = statementType };
     }
 
-    pub fn toString(self: *const StatementNode, writer: *std.Io.Writer) !void {
+    pub fn toString(self: *const StatementNode, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.statement) {
             inline else => |*val| try val.toString(writer),
         }
@@ -361,6 +458,13 @@ pub const StatementNode = struct {
 pub const ExpressionNode = struct {
     expression: ExpressionType,
 
+    pub fn initIfExpression(tkn: Token, condition: *StatementType.ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) ExpressionNode {
+        return .{
+            .expression = .{
+                .if_expression = ExpressionType.IfExpression.init(tkn, condition, consequence, alternative),
+            },
+        };
+    }
     pub fn initIdentifier(value: []const u8) ExpressionNode {
         return .{
             .expression = .{
@@ -377,7 +481,7 @@ pub const ExpressionNode = struct {
         };
     }
 
-    pub fn initPrefixExpression(tkn: Token, right: *const StatementType.ExpressionStatement) ExpressionNode {
+    pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) ExpressionNode {
         return .{
             .expression = .{
                 .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right),
@@ -385,7 +489,7 @@ pub const ExpressionNode = struct {
         };
     }
 
-    pub fn initInfixExpression(tkn: Token, left: *const StatementType.ExpressionStatement, right: *const StatementType.ExpressionStatement) ExpressionNode {
+    pub fn initInfixExpression(tkn: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) ExpressionNode {
         return .{
             .expression = .{
                 .infix_expression = ExpressionType.InfixExpression.init(tkn, left, right),
@@ -401,7 +505,7 @@ pub const ExpressionNode = struct {
         };
     }
 
-    pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) !void {
+    pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.expression) {
             inline else => |*val| try val.toString(writer),
         }
@@ -427,9 +531,9 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *Program) void {
-        for (self.statements.items) |stmt| {
+        for (self.statements.items) |*stmt| {
             switch (stmt.statement) {
-                .expression => |exp_stmt| exp_stmt.deinit(self.allocator),
+                .expression => |*exp_stmt| exp_stmt.deinit(self.allocator),
                 else => {},
             }
         }

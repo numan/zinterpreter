@@ -199,7 +199,7 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initPrefixExpression(cur_token, right_ptr);
     }
 
-    fn parseInfixExpression(self: *Self, left: *const ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
+    fn parseInfixExpression(self: *Self, left: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
         const current_token = self.current_token;
         const precedence = self.curPrecedence();
         self.nextToken();
@@ -220,6 +220,48 @@ pub const Parser = struct {
         }
 
         return exp;
+    }
+
+    fn parseIfExpression(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        if (!try self.expectPeek(.lparen)) return null;
+
+        self.nextToken();
+
+        const condition = try self.allocator.create(ast.StatementType.ExpressionStatement);
+        const parsed_condition = try self.parseExpression(.lowest);
+
+        condition.* = parsed_condition.?;
+
+        if (!try self.expectPeek(.rparen)) return null;
+        if (!try self.expectPeek(.lbrace)) return null;
+
+        const consequence = try self.parseBlockStatement();
+
+        var alternative: ?ast.StatementType.BlockStatement = null;
+        if (self.peek_token.token_type == .@"else") {
+            self.nextToken();
+
+            if (!try self.expectPeek(.lbrace)) return null;
+
+            alternative = try self.parseBlockStatement();
+        }
+
+        return ast.StatementType.ExpressionStatement.initIfExpression(current_token, condition, consequence, alternative);
+    }
+
+    fn parseBlockStatement(self: *Self) ParseError!ast.StatementType.BlockStatement {
+        var block_stmt = ast.StatementType.BlockStatement.init(self.current_token, self.allocator);
+        self.nextToken();
+
+        while (self.current_token.token_type != .rbrace and self.current_token.token_type != .eof) {
+            const stmt = try self.parseStatement();
+            if (stmt) |val| {
+                try block_stmt.addStatement(val);
+            }
+            self.nextToken();
+        }
+        return block_stmt;
     }
 
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
@@ -247,6 +289,7 @@ pub const Parser = struct {
             .iden => Self.parseIdentifier,
             .int => Self.parseIntegerLiteral,
             .lparen => Self.parseGroupedExpression,
+            .@"if" => Self.parseIfExpression,
             inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             else => null,

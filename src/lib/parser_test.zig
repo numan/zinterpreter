@@ -596,3 +596,109 @@ test "parse infix expressions" {
         try testInfixExpression(&statement.expression.?.expression, case.leftValue, case.operator, case.rightValue);
     }
 }
+
+test "parsing if expression" {
+    const input = "if (x < y) { x }";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+
+    try testing.expectEqual(1, program.*.statements.items.len);
+
+    const expression = switch (program.statements.items[0].statement) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const if_expression = switch (expression.expression.?.expression) {
+        .if_expression => |val| val,
+        else => {
+            std.debug.print("Expected if expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testInfixExpression(&if_expression.condition.expression.?.expression, .{ .string = "x" }, "<", .{ .string = "y" });
+
+    try testing.expectEqual(1, if_expression.consequence.statements.items.len);
+
+    const consequence_expression = switch (if_expression.consequence.statements.items[0].statement) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression in consequence. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testIdentifier(&consequence_expression.expression.?.expression, "x");
+
+    try testing.expect(null == if_expression.alternative);
+}
+
+test "parsing if else expression" {
+    const input = "if (x < y) { x } else { y }";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+
+    try testing.expectEqual(1, program.*.statements.items.len);
+
+    const expression = switch (program.statements.items[0].statement) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const if_expression = switch (expression.expression.?.expression) {
+        .if_expression => |val| val,
+        else => {
+            std.debug.print("Expected if expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testInfixExpression(&if_expression.condition.expression.?.expression, .{ .string = "x" }, "<", .{ .string = "y" });
+
+    try testing.expectEqual(1, if_expression.consequence.statements.items.len);
+
+    const consequence_expression = switch (if_expression.consequence.statements.items[0].statement) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression in consequence. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testIdentifier(&consequence_expression.expression.?.expression, "x");
+
+    const alternative = if_expression.alternative.?;
+
+    try testing.expectEqual(1, alternative.statements.items.len);
+
+    const alternative_expression = switch (alternative.statements.items[0].statement) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression in alternative. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testIdentifier(&alternative_expression.expression.?.expression, "y");
+}
