@@ -100,6 +100,42 @@ pub const ExpressionType = union(enum) {
         }
     }
 
+    pub fn initIfExpression(tkn: Token, condition: *StatementType.ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) ExpressionType {
+        return .{
+            .if_expression = IfExpression.init(tkn, condition, consequence, alternative),
+        };
+    }
+
+    pub fn initIdentifier(value: []const u8) ExpressionType {
+        return .{
+            .identifier = Identifier.init(value),
+        };
+    }
+
+    pub fn initIntegerLiteral(tkn: Token, val: u64) ExpressionType {
+        return .{
+            .integer_literal = IntegerLiteral.init(tkn, val),
+        };
+    }
+
+    pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .prefix_expression = PrefixExpression.init(tkn, right),
+        };
+    }
+
+    pub fn initInfixExpression(tkn: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .infix_expression = InfixExpression.init(tkn, left, right),
+        };
+    }
+
+    pub fn initBooleanLiteral(tkn: Token, val: bool) ExpressionType {
+        return .{
+            .boolean_literal = BooleanLiteral.init(tkn, val),
+        };
+    }
+
     pub const IfExpression = struct {
         const Self = @This();
         token: Token,
@@ -123,11 +159,8 @@ pub const ExpressionType = union(enum) {
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             try writer.print("if", .{});
-            if (self.condition.*.expression) |cond_exp| {
-                const exp_node = switch (cond_exp.expression) {
-                    inline else => |*val| ExpNode.implBy(val),
-                };
-                try exp_node.toString(writer);
+            if (self.condition.*.expression) |*cond_exp| {
+                try cond_exp.toString(writer);
             }
             try writer.print(" ", .{});
 
@@ -183,19 +216,13 @@ pub const ExpressionType = union(enum) {
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             _ = try writer.write("(");
 
-            if (self.left.*.expression) |left_expression| {
-                const exp_node = switch (left_expression.expression) {
-                    inline else => |*val| ExpNode.implBy(val),
-                };
-                try exp_node.toString(writer);
+            if (self.left.*.expression) |*left_expression| {
+                try left_expression.toString(writer);
             }
             _ = try writer.print(" {s} ", .{self.token.ch});
 
-            if (self.right.*.expression) |right_expression| {
-                const exp_node = switch (right_expression.expression) {
-                    inline else => |*val| ExpNode.implBy(val),
-                };
-                try exp_node.toString(writer);
+            if (self.right.*.expression) |*right_expression| {
+                try right_expression.toString(writer);
             }
 
             _ = try writer.write(")");
@@ -224,11 +251,8 @@ pub const ExpressionType = union(enum) {
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             try writer.print("({s}", .{self.operator});
-            if (self.right.*.expression) |exp| {
-                const exp_node = switch (exp.expression) {
-                    inline else => |*val| ExpNode.implBy(val),
-                };
-                try exp_node.toString(writer);
+            if (self.right.*.expression) |*exp| {
+                try exp.toString(writer);
             }
             try writer.print(")", .{});
             try writer.flush();
@@ -285,9 +309,15 @@ pub const StatementType = union(enum) {
     expression: ExpressionStatement,
     block: BlockStatement,
 
+    pub fn toString(self: *const StatementType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (self.*) {
+            inline else => |*val| try val.toString(writer),
+        }
+    }
+
     pub const BlockStatement = struct {
         token: Token,
-        statements: ArrayList(StatementNode) = .empty,
+        statements: ArrayList(StatementType) = .empty,
         allocator: std.mem.Allocator,
 
         const Self = @This();
@@ -300,19 +330,19 @@ pub const StatementType = union(enum) {
             };
         }
 
-        pub fn addStatement(self: *Self, stmt: StatementNode) !void {
+        pub fn addStatement(self: *Self, stmt: StatementType) !void {
             try self.statements.append(self.allocator, stmt);
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             for (self.statements.items) |*stmt| {
-                try stmt.*.toString(writer);
+                try stmt.toString(writer);
             }
         }
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             for (self.statements.items) |*stmt| {
-                switch (stmt.statement) {
+                switch (stmt.*) {
                     .expression => |*exp_stmt| exp_stmt.deinit(allocator),
                     else => {},
                 }
@@ -322,43 +352,43 @@ pub const StatementType = union(enum) {
     };
 
     pub const ExpressionStatement = struct {
-        expression: ?ExpressionNode,
+        expression: ?ExpressionType,
 
         const Self = @This();
 
         pub fn initIfExpression(tkn: Token, condition: *ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) Self {
             return .{
-                .expression = ExpressionNode.initIfExpression(tkn, condition, consequence, alternative),
+                .expression = ExpressionType.initIfExpression(tkn, condition, consequence, alternative),
             };
         }
 
         pub fn initIdentifierExpression(value: []const u8) Self {
             return .{
-                .expression = ExpressionNode.initIdentifier(value),
+                .expression = ExpressionType.initIdentifier(value),
             };
         }
 
         pub fn initIntegerLiteralExpression(tkn: Token, val: u64) Self {
             return .{
-                .expression = ExpressionNode.initIntegerLiteral(tkn, val),
+                .expression = ExpressionType.initIntegerLiteral(tkn, val),
             };
         }
 
         pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) Self {
             return .{
-                .expression = ExpressionNode.initPrefixExpression(tkn, right),
+                .expression = ExpressionType.initPrefixExpression(tkn, right),
             };
         }
 
         pub fn initInfixExpression(tkn: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) Self {
             return .{
-                .expression = ExpressionNode.initInfixExpression(tkn, left, right),
+                .expression = ExpressionType.initInfixExpression(tkn, left, right),
             };
         }
 
         pub fn initBooleanLiteralExpression(tkn: Token, value: bool) Self {
             return .{
-                .expression = ExpressionNode.initBooleanLiteral(tkn, value),
+                .expression = ExpressionType.initBooleanLiteral(tkn, value),
             };
         }
 
@@ -373,7 +403,7 @@ pub const StatementType = union(enum) {
 
         pub fn deinit(self: *ExpressionStatement, allocator: std.mem.Allocator) void {
             if (self.expression) |*exp_node| {
-                switch (exp_node.expression) {
+                switch (exp_node.*) {
                     .prefix_expression => |*prefix| {
                         prefix.right.deinit(allocator);
                         allocator.destroy(prefix.right);
@@ -400,7 +430,7 @@ pub const StatementType = union(enum) {
 
     pub const ReturnStatement = struct {
         token: Token,
-        return_value: ?ExpressionNode = null,
+        return_value: ?ExpressionType = null,
 
         pub fn toString(self: *const ReturnStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{
@@ -421,7 +451,7 @@ pub const StatementType = union(enum) {
     pub const LetStatement = struct {
         token: Token,
         name: Identifier,
-        value: ?ExpressionNode = null,
+        value: ?ExpressionType = null,
 
         pub fn toString(self: *const LetStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{self.token.token_type.toString()});
@@ -441,79 +471,8 @@ pub const StatementType = union(enum) {
     };
 };
 
-pub const StatementNode = struct {
-    statement: StatementType,
-
-    pub fn init(statementType: StatementType) StatementNode {
-        return .{ .statement = statementType };
-    }
-
-    pub fn toString(self: *const StatementNode, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        switch (self.statement) {
-            inline else => |*val| try val.toString(writer),
-        }
-    }
-};
-
-pub const ExpressionNode = struct {
-    expression: ExpressionType,
-
-    pub fn initIfExpression(tkn: Token, condition: *StatementType.ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) ExpressionNode {
-        return .{
-            .expression = .{
-                .if_expression = ExpressionType.IfExpression.init(tkn, condition, consequence, alternative),
-            },
-        };
-    }
-    pub fn initIdentifier(value: []const u8) ExpressionNode {
-        return .{
-            .expression = .{
-                .identifier = Identifier.init(value),
-            },
-        };
-    }
-
-    pub fn initIntegerLiteral(tkn: Token, val: u64) ExpressionNode {
-        return .{
-            .expression = .{
-                .integer_literal = ExpressionType.IntegerLiteral.init(tkn, val),
-            },
-        };
-    }
-
-    pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) ExpressionNode {
-        return .{
-            .expression = .{
-                .prefix_expression = ExpressionType.PrefixExpression.init(tkn, right),
-            },
-        };
-    }
-
-    pub fn initInfixExpression(tkn: Token, left: *StatementType.ExpressionStatement, right: *StatementType.ExpressionStatement) ExpressionNode {
-        return .{
-            .expression = .{
-                .infix_expression = ExpressionType.InfixExpression.init(tkn, left, right),
-            },
-        };
-    }
-
-    pub fn initBooleanLiteral(tkn: Token, val: bool) ExpressionNode {
-        return .{
-            .expression = .{
-                .boolean_literal = ExpressionType.BooleanLiteral.init(tkn, val),
-            },
-        };
-    }
-
-    pub fn toString(self: *const ExpressionNode, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        switch (self.expression) {
-            inline else => |*val| try val.toString(writer),
-        }
-    }
-};
-
 pub const Program = struct {
-    statements: ArrayList(StatementNode),
+    statements: ArrayList(StatementType),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Program {
@@ -522,17 +481,17 @@ pub const Program = struct {
 
     pub fn toString(self: *const Program, writer: *std.Io.Writer) !void {
         for (self.statements.items) |*stmt| {
-            try stmt.*.toString(writer);
+            try stmt.toString(writer);
         }
     }
 
-    pub fn addStatement(self: *Program, statement: StatementNode) !void {
+    pub fn addStatement(self: *Program, statement: StatementType) !void {
         try self.statements.append(self.allocator, statement);
     }
 
     pub fn deinit(self: *Program) void {
         for (self.statements.items) |*stmt| {
-            switch (stmt.statement) {
+            switch (stmt.*) {
                 .expression => |*exp_stmt| exp_stmt.deinit(self.allocator),
                 else => {},
             }

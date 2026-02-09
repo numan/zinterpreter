@@ -53,7 +53,7 @@ pub const Parser = struct {
         self.peek_token = self.lexer.nextToken();
     }
 
-    fn parseStatement(self: *Self) ParseError!?ast.StatementNode {
+    fn parseStatement(self: *Self) ParseError!?ast.StatementType {
         return switch (self.current_token.token_type) {
             TokenType.let => try self.parseLetStatement(),
             TokenType.@"return" => try self.parseReturnStatement(),
@@ -61,16 +61,16 @@ pub const Parser = struct {
         };
     }
 
-    fn parseExpressionStatement(self: *Self) ParseError!?ast.StatementNode {
+    fn parseExpressionStatement(self: *Self) ParseError!?ast.StatementType {
         const expression = try self.parseExpression(.lowest);
         if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
         }
 
         if (expression) |expr| {
-            return ast.StatementNode.init(ast.StatementType{
+            return ast.StatementType{
                 .expression = expr,
-            });
+            };
         }
 
         return null;
@@ -100,7 +100,7 @@ pub const Parser = struct {
         return try self.parseExpression(precedence) orelse return null;
     }
 
-    fn parseReturnStatement(self: *Self) ParseError!?ast.StatementNode {
+    fn parseReturnStatement(self: *Self) ParseError!?ast.StatementType {
         const current_token = self.current_token;
 
         self.nextToken();
@@ -109,14 +109,14 @@ pub const Parser = struct {
             self.nextToken();
         }
 
-        return ast.StatementNode.init(ast.StatementType{
+        return ast.StatementType{
             .@"return" = .{
                 .token = current_token,
             },
-        });
+        };
     }
 
-    fn parseLetStatement(self: *Self) ParseError!?ast.StatementNode {
+    fn parseLetStatement(self: *Self) ParseError!?ast.StatementType {
         const current_token = self.current_token;
 
         if (!try self.expectPeek(TokenType.iden)) {
@@ -133,13 +133,13 @@ pub const Parser = struct {
             self.nextToken();
         }
 
-        return ast.StatementNode.init(ast.StatementType{ .let = .{
+        return ast.StatementType{ .let = .{
             .token = current_token,
             .name = .{
                 .token_type = TokenType.iden,
                 .value = iden_token.ch,
             },
-        } });
+        } };
     }
 
     fn curTokenIs(self: *Self, tokenType: TokenType) bool {
