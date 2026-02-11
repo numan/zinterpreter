@@ -464,6 +464,18 @@ test "infix operator precedence" {
             .input = "!(true == true)",
             .expected = "(!(true == true))",
         },
+        .{
+            .input = "a + add(b * c) + d",
+            .expected = "((a + add((b * c))) + d)",
+        },
+        .{
+            .input = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+            .expected = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+        },
+        .{
+            .input = "add(a + b + c * d / f + g)",
+            .expected = "add((((a + b) + ((c * d) / f)) + g))",
+        },
     };
 
     for (cases) |case| {
@@ -786,4 +798,43 @@ test "function parameter parsing" {
             try testing.expectEqualStrings(expected_param, fn_expression.parameters[i].value);
         }
     }
+}
+
+test "parsing call expression" {
+    const input = "add(1, 2 * 3, 4 + 5);";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expression = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const call_exp = switch (expression.expression.?) {
+        .call_expression => |val| val,
+        else => {
+            std.debug.print("Expected call expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testIdentifier(&call_exp.function.expression.?, "add");
+
+    try testing.expectEqual(3, call_exp.arguments.len);
+
+    try testLiteralExpression(&call_exp.arguments[0].expression.?, .{ .integer = 1 });
+    try testInfixExpression(&call_exp.arguments[1].expression.?, .{ .integer = 2 }, "*", .{ .integer = 3 });
+    try testInfixExpression(&call_exp.arguments[2].expression.?, .{ .integer = 4 }, "+", .{ .integer = 5 });
 }

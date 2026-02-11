@@ -315,6 +315,39 @@ pub const Parser = struct {
         return try list.toOwnedSlice(self.allocator);
     }
 
+    fn parseCallExpression(self: *Self, function: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        const arguments = try self.parseCallArguments() orelse return null;
+        return ast.StatementType.ExpressionStatement.initCallExpression(current_token, function, arguments);
+    }
+
+    fn parseCallArguments(self: *Self) ParseError!?[]ast.StatementType.ExpressionStatement {
+        var list = std.ArrayList(ast.StatementType.ExpressionStatement).empty;
+
+        if (self.peek_token.token_type == .rparen) {
+            self.nextToken();
+            return list.items;
+        }
+
+        self.nextToken();
+
+        const first_arg = try self.parseExpression(.lowest) orelse return null;
+        try list.append(self.allocator, first_arg);
+
+        while (self.peek_token.token_type == .comma) {
+            self.nextToken();
+            self.nextToken();
+            const arg = try self.parseExpression(.lowest) orelse return null;
+            try list.append(self.allocator, arg);
+        }
+
+        if (!try self.expectPeek(.rparen)) {
+            return null;
+        }
+
+        return try list.toOwnedSlice(self.allocator);
+    }
+
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
         _ = self;
         return switch (token_type) {
@@ -322,6 +355,7 @@ pub const Parser = struct {
             .lt, .gt => .less_greater,
             .plus, .minus => .sum,
             .slash, .asterisk => .product,
+            .lparen => .call,
             else => .lowest,
         };
     }
@@ -352,6 +386,7 @@ pub const Parser = struct {
         _ = self;
         return switch (token_type) {
             inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt => Self.parseInfixExpression,
+            .lparen => Self.parseCallExpression,
             else => null,
         };
     }

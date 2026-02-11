@@ -92,6 +92,7 @@ pub const ExpressionType = union(enum) {
     prefix_expression: PrefixExpression,
     infix_expression: InfixExpression,
     if_expression: IfExpression,
+    call_expression: CallExpression,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -145,6 +146,12 @@ pub const ExpressionType = union(enum) {
                 .parameters = params,
                 .body = body,
             },
+        };
+    }
+
+    pub fn initCallExpression(tkn: Token, function: *StatementType.ExpressionStatement, arguments: []StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .call_expression = CallExpression.init(tkn, function, arguments),
         };
     }
 
@@ -325,6 +332,42 @@ pub const ExpressionType = union(enum) {
             return self.token.ch;
         }
     };
+
+    pub const CallExpression = struct {
+        const Self = @This();
+        token: Token,
+        function: *StatementType.ExpressionStatement,
+        arguments: []StatementType.ExpressionStatement,
+
+        pub fn init(tkn: Token, function: *StatementType.ExpressionStatement, arguments: []StatementType.ExpressionStatement) Self {
+            return .{
+                .token = tkn,
+                .function = function,
+                .arguments = arguments,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            if (self.function.expression) |*func_exp| {
+                try func_exp.toString(writer);
+            }
+            _ = try writer.write("(");
+            for (self.arguments, 0..) |*arg, i| {
+                if (arg.expression) |*exp| {
+                    try exp.toString(writer);
+                }
+                if (i < self.arguments.len - 1) {
+                    _ = try writer.write(", ");
+                }
+            }
+            _ = try writer.write(")");
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 };
 
 pub const Identifier = struct {
@@ -450,6 +493,12 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initCallExpression(tkn: Token, function: *ExpressionStatement, arguments: []ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionType.initCallExpression(tkn, function, arguments),
+            };
+        }
+
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
             if (self.expression) |*value| {
                 try value.toString(writer);
@@ -483,6 +532,14 @@ pub const StatementType = union(enum) {
                     .function_literal => |*fun_exp| {
                         fun_exp.body.deinit(allocator);
                         allocator.free(fun_exp.parameters);
+                    },
+                    .call_expression => |*call_exp| {
+                        call_exp.function.deinit(allocator);
+                        allocator.destroy(call_exp.function);
+                        for (call_exp.arguments) |*arg| {
+                            arg.deinit(allocator);
+                        }
+                        allocator.free(call_exp.arguments);
                     },
                     else => {},
                 }
