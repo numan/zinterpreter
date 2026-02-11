@@ -11,6 +11,7 @@ pub const ParseError = error{ InvalidCharacter, Overflow, OutOfMemory };
 
 const PrefixParseFn = *const fn (*Parser) ParseError!?ast.StatementType.ExpressionStatement;
 const InfixParseFn = *const fn (*Parser, *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement;
+const IdentifierListType = std.ArrayList(ast.Identifier);
 
 pub const Parser = struct {
     lexer: *Lexer,
@@ -78,7 +79,7 @@ pub const Parser = struct {
 
     fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementType.ExpressionStatement {
         if (self.getPrefixParseFn(self.current_token.token_type)) |prefix_fn| {
-            var left = try prefix_fn(self) orelse unreachable;
+            var left = try prefix_fn(self) orelse return null;
 
             while (self.peek_token.token_type != .semicolon and @intFromEnum(precedence) < @intFromEnum(self.peekPrecedence())) {
                 const infix_fn = self.getInixParseFn(self.peek_token.token_type) orelse return left;
@@ -135,10 +136,7 @@ pub const Parser = struct {
 
         return ast.StatementType{ .let = .{
             .token = current_token,
-            .name = .{
-                .token_type = TokenType.iden,
-                .value = iden_token.ch,
-            },
+            .name = ast.Identifier.init(iden_token, iden_token.ch),
         } };
     }
 
@@ -177,7 +175,7 @@ pub const Parser = struct {
     }
 
     fn parseIdentifier(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
-        return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token.ch);
+        return ast.StatementType.ExpressionStatement.initIdentifierExpression(parser.current_token, parser.current_token.ch);
     }
 
     fn parseIntegerLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
@@ -264,6 +262,59 @@ pub const Parser = struct {
         return block_stmt;
     }
 
+    fn parseFunctionLiteral(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+
+        if (!try self.expectPeek(.lparen)) {
+            return null;
+        }
+
+        const params = try self.parseFunctionParams() orelse return null;
+
+        if (!try self.expectPeek(.lbrace)) {
+            return null;
+        }
+
+        const body = try self.parseBlockStatement();
+
+        return ast.StatementType.ExpressionStatement.initFunctionLiteral(
+            current_token,
+            params,
+            body,
+        );
+    }
+
+    fn parseFunctionParams(self: *Self) ParseError!?[]ast.Identifier {
+        var list: IdentifierListType = .empty;
+
+        if (self.peek_token.token_type == .rparen) {
+            self.nextToken();
+            return list.items;
+        }
+
+        self.nextToken();
+
+        try list.append(
+            self.allocator,
+            ast.Identifier.init(self.current_token, self.current_token.ch),
+        );
+
+        while (self.peek_token.token_type == .comma) {
+            self.nextToken();
+            self.nextToken();
+            try list.append(
+                self.allocator,
+                ast.Identifier.init(self.current_token, self.current_token.ch),
+            );
+        }
+
+        if (!try self.expectPeek(.rparen)) {
+            return null;
+        }
+
+        return try list.toOwnedSlice(self.allocator);
+    }
+
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
         _ = self;
         return switch (token_type) {
@@ -290,6 +341,7 @@ pub const Parser = struct {
             .int => Self.parseIntegerLiteral,
             .lparen => Self.parseGroupedExpression,
             .@"if" => Self.parseIfExpression,
+            .function => Self.parseFunctionLiteral,
             inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             else => null,

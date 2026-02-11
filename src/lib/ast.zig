@@ -88,6 +88,7 @@ pub const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
     boolean_literal: BooleanLiteral,
+    function_literal: FunctionLiteral,
     prefix_expression: PrefixExpression,
     infix_expression: InfixExpression,
     if_expression: IfExpression,
@@ -106,9 +107,9 @@ pub const ExpressionType = union(enum) {
         };
     }
 
-    pub fn initIdentifier(value: []const u8) ExpressionType {
+    pub fn initIdentifier(tkn: Token, value: []const u8) ExpressionType {
         return .{
-            .identifier = Identifier.init(value),
+            .identifier = Identifier.init(tkn, value),
         };
     }
 
@@ -135,6 +136,46 @@ pub const ExpressionType = union(enum) {
             .boolean_literal = BooleanLiteral.init(tkn, val),
         };
     }
+
+    pub fn initFunctionLiteral(tkn: Token, params: []Identifier, body: StatementType.BlockStatement) ExpressionType {
+        return .{
+            .function_literal = .{
+                .token = tkn,
+
+                .parameters = params,
+                .body = body,
+            },
+        };
+    }
+
+    pub const FunctionLiteral = struct {
+        token: Token,
+        parameters: []Identifier,
+        body: StatementType.BlockStatement,
+
+        const Self = @This();
+
+        pub fn init(tkn: Token, parameters: []Identifier, body: StatementType.BlockStatement) Self {
+            return .{
+                .token = tkn,
+                .parameters = parameters,
+                .body = body,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            try writer.print("{s}(", .{self.token.ch});
+            for (self.parameters, 0..) |param, i| {
+                try param.toString(writer);
+                if (i < self.parameters.len - 1) {
+                    _ = try writer.write(", ");
+                }
+            }
+            _ = try writer.write(") ");
+            try self.body.toString(writer);
+            try writer.flush();
+        }
+    };
 
     pub const IfExpression = struct {
         const Self = @This();
@@ -287,11 +328,14 @@ pub const ExpressionType = union(enum) {
 };
 
 pub const Identifier = struct {
-    token_type: TokenType,
+    token: Token,
     value: []const u8,
 
-    pub fn init(value: []const u8) Identifier {
-        return .{ .token_type = .iden, .value = value };
+    pub fn init(tkn: Token, value: []const u8) Identifier {
+        return .{
+            .token = tkn,
+            .value = value,
+        };
     }
 
     pub fn toString(self: *const Identifier, writer: *std.Io.Writer) !void {
@@ -356,15 +400,29 @@ pub const StatementType = union(enum) {
 
         const Self = @This();
 
+        pub fn initFunctionLiteral(tkn: Token, params: []Identifier, body: StatementType.BlockStatement) Self {
+            return .{
+                .expression = ExpressionType.initFunctionLiteral(
+                    tkn,
+                    params,
+                    body,
+                ),
+            };
+        }
         pub fn initIfExpression(tkn: Token, condition: *ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) Self {
             return .{
-                .expression = ExpressionType.initIfExpression(tkn, condition, consequence, alternative),
+                .expression = ExpressionType.initIfExpression(
+                    tkn,
+                    condition,
+                    consequence,
+                    alternative,
+                ),
             };
         }
 
-        pub fn initIdentifierExpression(value: []const u8) Self {
+        pub fn initIdentifierExpression(tkn: Token, value: []const u8) Self {
             return .{
-                .expression = ExpressionType.initIdentifier(value),
+                .expression = ExpressionType.initIdentifier(tkn, value),
             };
         }
 
@@ -421,6 +479,10 @@ pub const StatementType = union(enum) {
                         if (if_exp.alternative) |*alt| {
                             alt.deinit(allocator);
                         }
+                    },
+                    .function_literal => |*fun_exp| {
+                        fun_exp.body.deinit(allocator);
+                        allocator.free(fun_exp.parameters);
                     },
                     else => {},
                 }

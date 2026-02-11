@@ -101,8 +101,8 @@ test "print let statement" {
     const statement: ast.StatementType = .{
         .let = .{
             .token = Token.init(.let, "let"),
-            .name = ast.Identifier.init("myVar"),
-            .value = ast.ExpressionType.initIdentifier("myValue"),
+            .name = ast.Identifier.init(Token.init(.iden, "myVar"), "myVar"),
+            .value = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue"),
         },
     };
 
@@ -121,7 +121,7 @@ test "print return statement" {
     const statement: ast.StatementType = .{
         .@"return" = .{
             .token = Token.init(.@"return", "return"),
-            .return_value = ast.ExpressionType.initIdentifier("myValue"),
+            .return_value = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue"),
         },
     };
 
@@ -139,7 +139,7 @@ test "print expression statement" {
 
     const statement: ast.StatementType = .{
         .expression = .{
-            .expression = ast.ExpressionType.initIdentifier("myValue"),
+            .expression = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue"),
         },
     };
 
@@ -699,4 +699,52 @@ test "parsing if else expression" {
     };
 
     try testIdentifier(&alternative_expression.expression.?, "y");
+}
+
+test "paring function literals" {
+    const input = "fn(x,y){ x + y; }";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+
+    try testing.expectEqual(1, program.*.statements.items.len);
+
+    const expression = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const fn_expression = switch (expression.expression.?) {
+        .function_literal => |val| val,
+        else => {
+            std.debug.print("Expected if expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(2, fn_expression.parameters.len);
+
+    try testing.expectEqualStrings("x", fn_expression.parameters[0].value);
+    try testing.expectEqualStrings("y", fn_expression.parameters[1].value);
+
+    try testing.expectEqual(1, fn_expression.body.statements.items.len);
+
+    const body_expression = switch (fn_expression.body.statements.items[0]) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression in function body. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testInfixExpression(&body_expression.expression.?, .{ .string = "x" }, "+", .{ .string = "y" });
 }
