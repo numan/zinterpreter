@@ -748,3 +748,42 @@ test "paring function literals" {
 
     try testInfixExpression(&body_expression.expression.?, .{ .string = "x" }, "+", .{ .string = "y" });
 }
+
+test "function parameter parsing" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected_params: []const []const u8,
+    }{
+        .{ .input = "fn() {};", .expected_params = &.{} },
+        .{ .input = "fn(x) {};", .expected_params = &.{"x"} },
+        .{ .input = "fn(x, y, z) {};", .expected_params = &.{ "x", "y", "z" } },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.statements.items.len);
+
+        const expression = switch (program.statements.items[0]) {
+            .expression => |val| val,
+            else => return error.TestUnexpectedResult,
+        };
+
+        const fn_expression = switch (expression.expression.?) {
+            .function_literal => |val| val,
+            else => return error.TestUnexpectedResult,
+        };
+
+        try testing.expectEqual(case.expected_params.len, fn_expression.parameters.len);
+
+        for (case.expected_params, 0..) |expected_param, i| {
+            try testing.expectEqualStrings(expected_param, fn_expression.parameters[i].value);
+        }
+    }
+}
