@@ -1,23 +1,58 @@
 const std = @import("std");
 const Lexer = @import("../lib/lexer.zig").Lexer;
+const Parser = @import("../lib/parser.zig").Parser;
 
 const PROMPT = ">> ";
 pub fn run(allocator: std.mem.Allocator) !void {
-    const stdin = std.io.getStdIn().reader();
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+
+    var stdin_buffer: [1024]u8 = undefined;
+    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+    const stdin = &stdin_reader.interface;
 
     try stdout.print("{s} ", .{PROMPT});
-    try bw.flush();
+    try stdout.flush();
 
-    const input = try stdin.readUntilDelimiterAlloc(allocator, '\n', 10_000);
-    var lexer = Lexer.init(input);
+    while (stdin.takeDelimiterExclusive('\n')) |line| {
+        stdin.toss(1);
 
-    var token = lexer.nextToken();
-    try stdout.print("\n", .{});
-    while (token.token_type != .eof) : (token = lexer.nextToken()) {
-        try stdout.print("Type: {any} Value: {s}\n", .{ token.token_type, token.ch });
-        try bw.flush();
+        var lexer = Lexer.init(line);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+        const errors = parser.allErrors();
+
+        if (errors.len != 0) {
+            try printParseErrors(errors, stdout);
+            continue;
+        }
+
+        try program.toString(stdout);
+        try stdout.writeAll("\n");
+        try stdout.flush();
+    } else |err| {
+        switch (err) {
+            error.EndOfStream => {
+                try stdout.writeAll("Bye!");
+            },
+            error.StreamTooLong => {
+                return err;
+            },
+            error.ReadFailed => {
+                return err;
+            },
+        }
+
+        try stdout.flush();
     }
+}
+
+pub fn printParseErrors(errors: [][]const u8, writer: *std.Io.Writer) !void {
+    for (errors) |e| {
+        try writer.print("Found Error: {s}\n", .{e});
+    }
+    try writer.flush();
 }
