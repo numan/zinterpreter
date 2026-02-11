@@ -106,13 +106,16 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        while (!self.curTokenIs(TokenType.semicolon)) {
+        const val = try self.parseExpression(.lowest);
+
+        if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
         }
 
         return ast.StatementType{
             .@"return" = .{
                 .token = current_token,
+                .value = val orelse .{ .expression = null },
             },
         };
     }
@@ -130,13 +133,18 @@ pub const Parser = struct {
             return null;
         }
 
-        while (!self.curTokenIs(TokenType.semicolon)) {
+        self.nextToken();
+
+        const exp_value = try self.parseExpression(.lowest) orelse return null;
+
+        if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
         }
 
         return ast.StatementType{ .let = .{
             .token = current_token,
             .name = ast.Identifier.init(iden_token, iden_token.ch),
+            .value = exp_value,
         } };
     }
 

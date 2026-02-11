@@ -549,14 +549,14 @@ pub const StatementType = union(enum) {
 
     pub const ReturnStatement = struct {
         token: Token,
-        return_value: ?ExpressionType = null,
+        value: ExpressionStatement,
 
         pub fn toString(self: *const ReturnStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{
                 self.token.token_type.toString(),
             });
 
-            if (self.return_value) |*value| {
+            if (self.value.expression) |*value| {
                 _ = try value.toString(writer);
             } else {
                 _ = try writer.write("");
@@ -570,7 +570,7 @@ pub const StatementType = union(enum) {
     pub const LetStatement = struct {
         token: Token,
         name: Identifier,
-        value: ?ExpressionType = null,
+        value: ExpressionStatement,
 
         pub fn toString(self: *const LetStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{self.token.token_type.toString()});
@@ -579,7 +579,7 @@ pub const StatementType = union(enum) {
 
             _ = try writer.write(" = ");
 
-            if (self.value) |*value| {
+            if (self.value.expression) |*value| {
                 try value.toString(writer);
             } else {
                 _ = try writer.write("");

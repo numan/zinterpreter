@@ -102,7 +102,7 @@ test "print let statement" {
         .let = .{
             .token = Token.init(.let, "let"),
             .name = ast.Identifier.init(Token.init(.iden, "myVar"), "myVar"),
-            .value = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue"),
+            .value = .{ .expression = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue") },
         },
     };
 
@@ -121,7 +121,7 @@ test "print return statement" {
     const statement: ast.StatementType = .{
         .@"return" = .{
             .token = Token.init(.@"return", "return"),
-            .return_value = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue"),
+            .value = .{ .expression = ast.ExpressionType.initIdentifier(Token.init(.iden, "myValue"), "myValue") },
         },
     };
 
@@ -164,6 +164,40 @@ test "parse return" {
     const program = try parser.parse();
 
     try testing.expectEqual(expected_number_of_statements, program.statements.items.len);
+}
+
+test "parse return statement values" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected_value: ExpectedValue,
+    }{
+        .{ .input = "return 5;", .expected_value = .{ .integer = 5 } },
+        .{ .input = "return true;", .expected_value = .{ .boolean = true } },
+        .{ .input = "return foobar;", .expected_value = .{ .string = "foobar" } },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.statements.items.len);
+
+        const return_stmt = switch (program.statements.items[0]) {
+            .@"return" => |val| val,
+            else => {
+                std.debug.print("Expected a return statement. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        try testLiteralExpression(&return_stmt.value.expression.?, case.expected_value);
+    }
 }
 
 test "parse let error" {
@@ -223,6 +257,43 @@ test "parser let" {
             },
             else => unreachable,
         }
+    }
+}
+
+test "parse let statement values" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected_identifier: []const u8,
+        expected_value: ExpectedValue,
+    }{
+        .{ .input = "let x = 5;", .expected_identifier = "x", .expected_value = .{ .integer = 5 } },
+        .{ .input = "let y = true;", .expected_identifier = "y", .expected_value = .{ .boolean = true } },
+        .{ .input = "let foobar = y;", .expected_identifier = "foobar", .expected_value = .{ .string = "y" } },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.statements.items.len);
+
+        const let_stmt = switch (program.statements.items[0]) {
+            .let => |val| val,
+            else => {
+                std.debug.print("Expected a let statement. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        try testing.expectEqualStrings(case.expected_identifier, let_stmt.name.value);
+
+        try testLiteralExpression(&let_stmt.value.expression.?, case.expected_value);
     }
 }
 
