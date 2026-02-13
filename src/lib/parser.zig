@@ -187,7 +187,7 @@ pub const Parser = struct {
     }
 
     fn parseIntegerLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
-        const val = try std.fmt.parseInt(u64, parser.current_token.ch, 10);
+        const val = try std.fmt.parseInt(i64, parser.current_token.ch, 10);
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 

@@ -2,9 +2,9 @@ const std = @import("std");
 const lib = @import("zinterpreter_lib");
 const repl = lib.repl;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     try stdout.print("Hello! This is the monkey programming language!\n", .{});
@@ -12,8 +12,5 @@ pub fn main() !void {
     try stdout.print("Try to type in commands \n", .{});
     try stdout.flush();
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    try repl.run(allocator);
+    try repl.run(init.io, init.gpa);
 }

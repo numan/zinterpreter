@@ -114,7 +114,7 @@ pub const ExpressionType = union(enum) {
         };
     }
 
-    pub fn initIntegerLiteral(tkn: Token, val: u64) ExpressionType {
+    pub fn initIntegerLiteral(tkn: Token, val: i64) ExpressionType {
         return .{
             .integer_literal = IntegerLiteral.init(tkn, val),
         };
@@ -314,9 +314,9 @@ pub const ExpressionType = union(enum) {
     pub const IntegerLiteral = struct {
         const Self = @This();
         token: Token,
-        value: u64,
+        value: i64,
 
-        pub fn init(obj: Token, val: u64) Self {
+        pub fn init(obj: Token, val: i64) Self {
             return .{
                 .token = obj,
                 .value = val,
@@ -469,7 +469,7 @@ pub const StatementType = union(enum) {
             };
         }
 
-        pub fn initIntegerLiteralExpression(tkn: Token, val: u64) Self {
+        pub fn initIntegerLiteralExpression(tkn: Token, val: i64) Self {
             return .{
                 .expression = ExpressionType.initIntegerLiteral(tkn, val),
             };

@@ -7,7 +7,7 @@ const Token = @import("./token.zig").Token;
 const TokenType = @import("./token.zig").TokenType;
 const Parser = @import("./parser.zig").Parser;
 
-fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: u64) !void {
+fn testIntegerLiteral(val: *const ast.ExpressionType, literal_value: i64) !void {
     switch (val.*) {
         .integer_literal => |exp| {
             try testing.expectEqual(literal_value, exp.value);
@@ -37,7 +37,7 @@ fn testBooleanLiteral(val: *const ast.ExpressionType, literal_value: bool) !void
 }
 
 const ExpectedValue = union(enum) {
-    integer: u64,
+    integer: i64,
     string: []const u8,
     boolean: bool,
 };

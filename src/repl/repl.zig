@@ -1,6 +1,7 @@
 const std = @import("std");
 const Lexer = @import("../lib/lexer.zig").Lexer;
 const Parser = @import("../lib/parser.zig").Parser;
+const Evaluator = @import("../lib/evaluator.zig");
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -17,13 +18,13 @@ const MONKEY_FACE =
     \\           '-----'
     \\
 ;
-pub fn run(allocator: std.mem.Allocator) !void {
+pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     var stdin_buffer: [1024]u8 = undefined;
-    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+    var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
     try stdout.print("{s} ", .{PROMPT});
@@ -44,8 +45,12 @@ pub fn run(allocator: std.mem.Allocator) !void {
             continue;
         }
 
-        try program.toString(stdout);
-        try stdout.writeAll("\n");
+        const eval = Evaluator.eval(program);
+
+        if (eval) |*obj| {
+            try obj.*.inspect(stdout);
+            try stdout.writeAll("\n");
+        }
 
         try stdout.print("{s} ", .{PROMPT});
 
