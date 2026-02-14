@@ -32,7 +32,7 @@ pub const Object = union(enum) {
         }
 
         pub fn inspect(self: *const Object.Boolean, writer: *std.Io.Writer) !void {
-            try writer.print("{d}", .{self.value});
+            try writer.print("{}", .{self.value});
             try writer.flush();
         }
     };
@@ -45,7 +45,7 @@ pub const Object = union(enum) {
         }
         pub fn inspect(self: *const Object.Null, writer: *std.Io.Writer) !void {
             _ = self;
-            try writer.printAll("null");
+            try writer.writeAll("null");
             try writer.flush();
         }
     };
