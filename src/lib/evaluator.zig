@@ -56,6 +56,9 @@ fn evalExpression(expression: *const ExpressionType) ?Object {
         .integer_literal => |integer_literal| .{
             .int = Object.Integer.init(integer_literal.value),
         },
+        .boolean_literal => |boolean_literal| .{
+            .bool = Object.Boolean.init(boolean_literal.value),
+        },
         else => null,
     };
 }
@@ -65,9 +68,27 @@ fn testIntegerObjectEqual(obj: ?Object, expected: i64) !void {
 
     const integer = switch (obj_value) {
         .int => |value| value,
+        else => {
+            std.debug.print("Expected an int. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
     };
 
     try testing.expectEqual(expected, integer.value);
+}
+
+fn testBooleanObjectEqual(obj: ?Object, expected: bool) !void {
+    const obj_value = obj orelse return error.TestUnexpectedResult;
+
+    const boolean = switch (obj_value) {
+        .bool => |value| value,
+        else => {
+            std.debug.print("Expected an bool. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(expected, boolean.value);
 }
 
 fn testEval(input: []const u8, allocator: std.mem.Allocator) !?Object {
@@ -92,5 +113,26 @@ test "eval integer expression" {
     for (tests) |case| {
         const evaluated = try testEval(case.input, testing.allocator);
         try testIntegerObjectEqual(evaluated, case.expected);
+    }
+}
+
+test "eval boolean" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{
+            .input = "true",
+            .expected = true,
+        },
+        .{
+            .input = "false",
+            .expected = false,
+        },
+    };
+
+    for (tests) |case| {
+        const evaluated = try testEval(case.input, testing.allocator);
+        try testBooleanObjectEqual(evaluated, case.expected);
     }
 }

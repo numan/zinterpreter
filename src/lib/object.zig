@@ -2,6 +2,8 @@ const std = @import("std");
 
 pub const Object = union(enum) {
     int: Integer,
+    bool: Boolean,
+    null: Null,
 
     const Self = @This();
 
