@@ -12,6 +12,10 @@ const Object = object.Object;
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 
+const TRUE: Object = .{ .bool = .{ .value = true } };
+const FALSE: Object = .{ .bool = .{ .value = false } };
+const NULL: Object = .{ .null = Object.Null.init() };
+
 pub fn eval(node: anytype) ?Object {
     return switch (@TypeOf(node)) {
         *Program, *const Program => evalProgram(node),
@@ -56,9 +60,7 @@ fn evalExpression(expression: *const ExpressionType) ?Object {
         .integer_literal => |integer_literal| .{
             .int = Object.Integer.init(integer_literal.value),
         },
-        .boolean_literal => |boolean_literal| .{
-            .bool = Object.Boolean.init(boolean_literal.value),
-        },
+        .boolean_literal => |boolean_literal| if (boolean_literal.value) TRUE else FALSE,
         else => null,
     };
 }
