@@ -65,14 +65,39 @@ fn evalExpression(expression: *const ExpressionType) ?Object {
             const right = evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
             return evalPrefixExpression(prefix_expression, right);
         },
+        .infix_expression => |*infix_expression| {
+            const left = evalExpression(&infix_expression.*.left.expression.?) orelse return null;
+            const right = evalExpression(&infix_expression.*.right.expression.?) orelse return null;
+            return evalInfixExpression(infix_expression, &left, &right);
+        },
         else => null,
     };
 }
 
-fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) ?Object {
+fn evalInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) Object {
+    return switch (right.*) {
+        .int => |*right_ptr| switch (left.*) {
+            .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
+            else => NULL,
+        },
+        else => NULL,
+    };
+}
+
+fn evalIntInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Integer, right: *const Object.Integer) Object {
+    return switch (expression.token.token_type) {
+        .plus => .{ .int = Object.Integer.init(left.value + right.value) },
+        .minus => .{ .int = Object.Integer.init(left.value - right.value) },
+        .asterisk => .{ .int = Object.Integer.init(left.value * right.value) },
+        .slash => .{ .int = Object.Integer.init(@divTrunc(left.value, right.value)) },
+        else => NULL,
+    };
+}
+fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) Object {
     return switch (operator.token.token_type) {
         .bang => return evalBangOperatorExpression(right),
-        else => null,
+        .minus => return evalMinusPrefixOperatorExpression(right),
+        else => NULL,
     };
 }
 
@@ -81,6 +106,13 @@ fn evalBangOperatorExpression(right: Object) Object {
         .bool => |boolean| if (boolean.value) FALSE else TRUE,
         .null => TRUE,
         else => FALSE,
+    };
+}
+
+fn evalMinusPrefixOperatorExpression(right: Object) Object {
+    return switch (right) {
+        .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
+        else => NULL,
     };
 }
 
@@ -126,14 +158,81 @@ test "eval integer expression" {
         input: []const u8,
         expected: i64,
     }{
-        .{ .input = "5", .expected = 5 },
-        .{ .input = "10", .expected = 10 },
-        .{ .input = "5; 10;", .expected = 10 },
+        .{
+            .input = "5",
+            .expected = 5,
+        },
+        .{
+            .input = "10",
+            .expected = 10,
+        },
+        .{
+            .input = "5; 10;",
+            .expected = 10,
+        },
+        .{
+            .input = "-5",
+            .expected = -5,
+        },
+        .{
+            .input = "-10",
+            .expected = -10,
+        },
+        .{
+            .input = "5 + 5 + 5 + 5 - 10",
+            .expected = 10,
+        },
+        .{
+            .input = "2 * 2 * 2 * 2 * 2",
+            .expected = 32,
+        },
+        .{
+            .input = "-50 + 100 + -50",
+            .expected = 0,
+        },
+        .{
+            .input = "5 * 2 + 10",
+            .expected = 20,
+        },
+        .{
+            .input = "5 + 2 * 10",
+            .expected = 25,
+        },
+        .{
+            .input = "20 + 2 * -10",
+            .expected = 0,
+        },
+        .{
+            .input = "50 / 2 * 2 + 10",
+            .expected = 60,
+        },
+        .{
+            .input = "2 * (5 + 10)",
+            .expected = 30,
+        },
+        .{
+            .input = "3 * 3 * 3 + 10",
+            .expected = 37,
+        },
+        .{
+            .input = "3 * (3 * 3) + 10",
+            .expected = 37,
+        },
+        .{
+            .input = "(5 + 10 * 2 + 15 / 3) * 2 + -10",
+            .expected = 50,
+        },
     };
 
     for (tests) |case| {
         const evaluated = try testEval(case.input, testing.allocator);
-        try testIntegerObjectEqual(evaluated, case.expected);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input {s}",
+                .{case.input},
+            );
+            return err;
+        };
     }
 }
 
