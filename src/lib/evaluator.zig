@@ -12,8 +12,8 @@ const Object = object.Object;
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 
-const TRUE: Object = .{ .bool = .{ .value = true } };
-const FALSE: Object = .{ .bool = .{ .value = false } };
+const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
+const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
 const NULL: Object = .{ .null = Object.Null.init() };
 
 pub fn eval(node: anytype) ?Object {
@@ -61,7 +61,26 @@ fn evalExpression(expression: *const ExpressionType) ?Object {
             .int = Object.Integer.init(integer_literal.value),
         },
         .boolean_literal => |boolean_literal| if (boolean_literal.value) TRUE else FALSE,
+        .prefix_expression => |*prefix_expression| {
+            const right = evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
+            return evalPrefixExpression(prefix_expression, right);
+        },
         else => null,
+    };
+}
+
+fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) ?Object {
+    return switch (operator.token.token_type) {
+        .bang => return evalBangOperatorExpression(right),
+        else => null,
+    };
+}
+
+fn evalBangOperatorExpression(right: Object) Object {
+    return switch (right) {
+        .bool => |boolean| if (boolean.value) FALSE else TRUE,
+        .null => TRUE,
+        else => FALSE,
     };
 }
 
@@ -130,6 +149,43 @@ test "eval boolean" {
         .{
             .input = "false",
             .expected = false,
+        },
+    };
+
+    for (tests) |case| {
+        const evaluated = try testEval(case.input, testing.allocator);
+        try testBooleanObjectEqual(evaluated, case.expected);
+    }
+}
+
+test "bang operator" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{
+            .input = "!true",
+            .expected = false,
+        },
+        .{
+            .input = "!false",
+            .expected = true,
+        },
+        .{
+            .input = "!!true",
+            .expected = true,
+        },
+        .{
+            .input = "!!false",
+            .expected = false,
+        },
+        .{
+            .input = "!5",
+            .expected = false,
+        },
+        .{
+            .input = "!!5",
+            .expected = true,
         },
     };
 
