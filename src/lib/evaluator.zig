@@ -70,6 +70,7 @@ fn evalExpression(expression: *const ExpressionType) ?Object {
             const right = evalExpression(&infix_expression.*.right.expression.?) orelse return null;
             return evalInfixExpression(infix_expression, &left, &right);
         },
+        .if_expression => |*if_expression| return evalIfExpression(if_expression),
         else => null,
     };
 }
@@ -130,6 +131,38 @@ fn evalMinusPrefixOperatorExpression(right: Object) Object {
         .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
         else => NULL,
     };
+}
+
+fn evalIfExpression(expression: *const ExpressionType.IfExpression) ?Object {
+    const condition = eval(expression.condition) orelse NULL;
+
+    if (isTruthy(condition)) {
+        return evalStatements(expression.consequence.statements.items);
+    } else if (expression.alternative) |alternative| {
+        return evalStatements(alternative.statements.items);
+    } else {
+        return NULL;
+    }
+}
+
+fn isTruthy(obj: Object) bool {
+    return switch (obj) {
+        .null => false,
+        .bool => |boolean| boolean.value,
+        else => true,
+    };
+}
+
+fn testNullObject(obj: ?Object) !void {
+    const obj_value = obj orelse return error.TestUnexpectedResult;
+
+    switch (obj_value) {
+        .null => {},
+        else => {
+            std.debug.print("Expected null. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
 }
 
 fn testIntegerObjectEqual(obj: ?Object, expected: i64) !void {
@@ -375,5 +408,50 @@ test "bang operator" {
     for (tests) |case| {
         const evaluated = try testEval(case.input, testing.allocator);
         try testBooleanObjectEqual(evaluated, case.expected);
+    }
+}
+
+test "if else expressions" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: ?i64,
+    }{
+        .{
+            .input = "if (true) { 10 }",
+            .expected = 10,
+        },
+        .{
+            .input = "if (false) { 10 }",
+            .expected = null,
+        },
+        .{
+            .input = "if (1) { 10 }",
+            .expected = 10,
+        },
+        .{
+            .input = "if (1 < 2) { 10 }",
+            .expected = 10,
+        },
+        .{
+            .input = "if (1 > 2) { 10 }",
+            .expected = null,
+        },
+        .{
+            .input = "if (1 > 2) { 10 } else { 20 }",
+            .expected = 20,
+        },
+        .{
+            .input = "if (1 < 2) { 10 } else { 20 }",
+            .expected = 10,
+        },
+    };
+
+    for (tests) |case| {
+        const evaluated = try testEval(case.input, testing.allocator);
+        if (case.expected) |expected| {
+            try testIntegerObjectEqual(evaluated, expected);
+        } else {
+            try testNullObject(evaluated);
+        }
     }
 }
