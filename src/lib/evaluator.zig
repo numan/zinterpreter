@@ -80,6 +80,10 @@ fn evalInfixExpression(expression: *const ExpressionType.InfixExpression, left: 
             .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
             else => NULL,
         },
+        .bool => |*right_ptr| switch (left.*) {
+            .bool => |*left_ptr| evalBoolInfixExpression(expression, left_ptr, right_ptr),
+            else => NULL,
+        },
         else => NULL,
     };
 }
@@ -90,9 +94,21 @@ fn evalIntInfixExpression(expression: *const ExpressionType.InfixExpression, lef
         .minus => .{ .int = Object.Integer.init(left.value - right.value) },
         .asterisk => .{ .int = Object.Integer.init(left.value * right.value) },
         .slash => .{ .int = Object.Integer.init(@divTrunc(left.value, right.value)) },
+        .lt => if (left.value < right.value) TRUE else FALSE,
+        .gt => if (left.value > right.value) TRUE else FALSE,
+        .eq => if (left.value == right.value) TRUE else FALSE,
+        .not_eq => if (left.value != right.value) TRUE else FALSE,
         else => NULL,
     };
 }
+fn evalBoolInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Boolean, right: *const Object.Boolean) Object {
+    return switch (expression.token.token_type) {
+        .eq => if (left.value == right.value) TRUE else FALSE,
+        .not_eq => if (left.value != right.value) TRUE else FALSE,
+        else => NULL,
+    };
+}
+
 fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) Object {
     return switch (operator.token.token_type) {
         .bang => return evalBangOperatorExpression(right),
@@ -248,6 +264,74 @@ test "eval boolean" {
         .{
             .input = "false",
             .expected = false,
+        },
+        .{
+            .input = "1 < 2",
+            .expected = true,
+        },
+        .{
+            .input = "1 > 2",
+            .expected = false,
+        },
+        .{
+            .input = "1 < 1",
+            .expected = false,
+        },
+        .{
+            .input = "1 > 1",
+            .expected = false,
+        },
+        .{
+            .input = "1 == 1",
+            .expected = true,
+        },
+        .{
+            .input = "1 != 1",
+            .expected = false,
+        },
+        .{
+            .input = "1 == 2",
+            .expected = false,
+        },
+        .{
+            .input = "1 != 2",
+            .expected = true,
+        },
+        .{
+            .input = "true == true",
+            .expected = true,
+        },
+        .{
+            .input = "false == false",
+            .expected = true,
+        },
+        .{
+            .input = "true == false",
+            .expected = false,
+        },
+        .{
+            .input = "true != false",
+            .expected = true,
+        },
+        .{
+            .input = "false != true",
+            .expected = true,
+        },
+        .{
+            .input = "(1 < 2) == true",
+            .expected = true,
+        },
+        .{
+            .input = "(1 < 2) == false",
+            .expected = false,
+        },
+        .{
+            .input = "(1 > 2) == true",
+            .expected = false,
+        },
+        .{
+            .input = "(1 > 2) == false",
+            .expected = true,
         },
     };
 
