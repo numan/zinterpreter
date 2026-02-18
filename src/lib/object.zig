@@ -4,8 +4,16 @@ pub const Object = union(enum) {
     int: Integer,
     bool: Boolean,
     null: Null,
+    err: Error,
 
     const Self = @This();
+    pub const Error = struct {
+        msg: []const u8,
+
+        pub fn init(m: []const u8) Error {
+            return .{ .msg = m };
+        }
+    };
 
     pub const Integer = struct {
         value: i64,

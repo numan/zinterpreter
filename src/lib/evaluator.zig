@@ -12,210 +12,239 @@ const Object = object.Object;
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 
-const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
-const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
-const NULL: Object = .{ .null = Object.Null.init() };
+pub const Evaluator = struct {
+    allocator: std.mem.Allocator,
 
-const EvalResult = union(enum) {
-    value: Object,
-    return_value: Object,
-};
+    const Self = @This();
 
-const EvalResultTag = std.meta.Tag(EvalResult);
+    const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
+    const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
+    const NULL: Object = .{ .null = Object.Null.init() };
 
-pub fn eval(node: anytype) ?Object {
-    const result = evalNode(node) orelse return null;
-    return unwrapEvalResult(result);
-}
-
-fn evalNode(node: anytype) ?EvalResult {
-    return switch (@TypeOf(node)) {
-        *Program, *const Program => evalProgram(node),
-        *StatementType, *const StatementType => evalStatement(node),
-        *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => evalExpressionStatement(node),
-        *ExpressionType, *const ExpressionType => evalExpression(node),
-        inline else => @compileError("unsupported node type for eval"),
+    const EvalResult = union(enum) {
+        value: Object,
+        return_value: Object,
+        err: Object,
     };
-}
 
-inline fn unwrapEvalResult(result: EvalResult) Object {
-    return switch (result) {
-        .value => |value| value,
-        .return_value => |value| value,
-    };
-}
+    const EvalResultTag = std.meta.Tag(EvalResult);
 
-inline fn wrapResult(tag: EvalResultTag, value: Object) EvalResult {
-    return switch (tag) {
-        .value => .{ .value = value },
-        .return_value => .{ .return_value = value },
-    };
-}
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{ .allocator = allocator };
+    }
 
-fn evalProgram(program: *const Program) ?EvalResult {
-    return evalStatements(program.statements.items);
-}
+    pub fn eval(self: *Self, node: anytype) ?Object {
+        _ = self.allocator;
+        const result = self.evalNode(node) orelse return null;
+        return unwrapEvalResult(result);
+    }
 
-fn evalStatements(statements: []const StatementType) ?EvalResult {
-    var result: ?EvalResult = null;
+    fn evalNode(self: *Self, node: anytype) ?EvalResult {
+        return switch (@TypeOf(node)) {
+            *Program, *const Program => self.evalProgram(node),
+            *StatementType, *const StatementType => self.evalStatement(node),
+            *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => self.evalExpressionStatement(node),
+            *ExpressionType, *const ExpressionType => self.evalExpression(node),
+            inline else => @compileError("unsupported node type for eval"),
+        };
+    }
 
-    for (statements) |*statement| {
-        result = evalStatement(statement);
+    inline fn unwrapEvalResult(result: EvalResult) Object {
+        return switch (result) {
+            .value => |value| value,
+            .return_value => |value| value,
+            .err => |value| value,
+        };
+    }
 
-        if (result) |evaluated| {
-            switch (evaluated) {
-                .return_value => return evaluated,
-                .value => {},
+    inline fn wrapResult(tag: EvalResultTag, value: Object) EvalResult {
+        return switch (tag) {
+            .value => .{ .value = value },
+            .return_value => .{ .return_value = value },
+            .err => .{ .err = value },
+        };
+    }
+
+    fn errorMsg(self: *Self, comptime format: []const u8, args: anytype) ![]const u8 {
+        return try std.fmt.allocPrint(self.allocator, format, args);
+    }
+
+    fn errorObj(self: *Self, comptime format: []const u8, args: anytype) !Object {
+        return .{
+            .err = Object.Error.init(self.errorMsg(format, args)),
+        };
+    }
+
+    fn evalProgram(self: *Self, program: *const Program) ?EvalResult {
+        return self.evalStatements(program.statements.items);
+    }
+
+    fn evalStatements(self: *Self, statements: []const StatementType) ?EvalResult {
+        var result: ?EvalResult = null;
+
+        for (statements) |*statement| {
+            result = self.evalStatement(statement);
+
+            if (result) |evaluated| {
+                switch (evaluated) {
+                    .return_value, .err => return evaluated,
+                    else => {},
+                }
             }
+        }
+
+        return result;
+    }
+
+    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) ?EvalResult {
+        return self.evalStatements(block_statement.statements.items);
+    }
+
+    fn evalStatement(self: *Self, statement: *const StatementType) ?EvalResult {
+        return switch (statement.*) {
+            .expression => |*expression_statement| self.evalExpressionStatement(expression_statement),
+            .@"return" => |*return_statement| self.evalReturnStatement(return_statement),
+            .block => |*block_statement| self.evalBlockStatement(block_statement),
+            else => null,
+        };
+    }
+
+    fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) ?EvalResult {
+        const value_result = self.evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
+
+        return wrapResult(.return_value, unwrapEvalResult(value_result));
+    }
+
+    fn evalExpressionStatement(self: *Self, expression_statement: *const StatementType.ExpressionStatement) ?EvalResult {
+        if (expression_statement.expression) |*expression| {
+            return self.evalExpression(expression);
+        }
+
+        return null;
+    }
+
+    fn evalExpression(self: *Self, expression: *const ExpressionType) ?EvalResult {
+        return switch (expression.*) {
+            .integer_literal => |integer_literal| wrapResult(.value, .{
+                .int = Object.Integer.init(integer_literal.value),
+            }),
+            .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
+            .prefix_expression => |*prefix_expression| {
+                const right_result = self.evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
+                const right = switch (right_result) {
+                    .value => |value| value,
+                    .return_value => |value| return wrapResult(.return_value, value),
+                    .err => |value| return wrapResult(.err, value),
+                };
+
+                return wrapResult(.value, evalPrefixExpression(prefix_expression, right));
+            },
+            .infix_expression => |*infix_expression| {
+                const left_result = self.evalExpression(&infix_expression.*.left.expression.?) orelse return null;
+                const left = switch (left_result) {
+                    .value => |value| value,
+                    .return_value => |value| return wrapResult(.return_value, value),
+                    .err => |value| return wrapResult(.err, value),
+                };
+
+                const right_result = self.evalExpression(&infix_expression.*.right.expression.?) orelse return null;
+                const right = switch (right_result) {
+                    .value => |value| value,
+                    .return_value => |value| return wrapResult(.return_value, value),
+                    .err => |value| return wrapResult(.err, value),
+                };
+
+                return wrapResult(.value, evalInfixExpression(infix_expression, &left, &right));
+            },
+            .if_expression => |*if_expression| self.evalIfExpression(if_expression),
+            else => null,
+        };
+    }
+
+    fn evalInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) Object {
+        return switch (right.*) {
+            .int => |*right_ptr| switch (left.*) {
+                .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
+                else => NULL,
+            },
+            .bool => |*right_ptr| switch (left.*) {
+                .bool => |*left_ptr| evalBoolInfixExpression(expression, left_ptr, right_ptr),
+                else => NULL,
+            },
+            else => NULL,
+        };
+    }
+
+    fn evalIntInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Integer, right: *const Object.Integer) Object {
+        return switch (expression.token.token_type) {
+            .plus => .{ .int = Object.Integer.init(left.value + right.value) },
+            .minus => .{ .int = Object.Integer.init(left.value - right.value) },
+            .asterisk => .{ .int = Object.Integer.init(left.value * right.value) },
+            .slash => .{ .int = Object.Integer.init(@divTrunc(left.value, right.value)) },
+            .lt => if (left.value < right.value) TRUE else FALSE,
+            .gt => if (left.value > right.value) TRUE else FALSE,
+            .eq => if (left.value == right.value) TRUE else FALSE,
+            .not_eq => if (left.value != right.value) TRUE else FALSE,
+            else => NULL,
+        };
+    }
+
+    fn evalBoolInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Boolean, right: *const Object.Boolean) Object {
+        return switch (expression.token.token_type) {
+            .eq => if (left.value == right.value) TRUE else FALSE,
+            .not_eq => if (left.value != right.value) TRUE else FALSE,
+            else => NULL,
+        };
+    }
+
+    fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) Object {
+        return switch (operator.token.token_type) {
+            .bang => evalBangOperatorExpression(right),
+            .minus => evalMinusPrefixOperatorExpression(right),
+            else => NULL,
+        };
+    }
+
+    fn evalBangOperatorExpression(right: Object) Object {
+        return switch (right) {
+            .bool => |boolean| if (boolean.value) FALSE else TRUE,
+            .null => TRUE,
+            else => FALSE,
+        };
+    }
+
+    fn evalMinusPrefixOperatorExpression(right: Object) Object {
+        return switch (right) {
+            .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
+            else => NULL,
+        };
+    }
+
+    fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) ?EvalResult {
+        const condition_result: EvalResult = self.evalNode(expression.condition) orelse wrapResult(.value, NULL);
+        const condition = switch (condition_result) {
+            .value => |value| value,
+            .return_value => |value| return wrapResult(.return_value, value),
+            .err => |value| return wrapResult(.err, value),
+        };
+
+        if (isTruthy(condition)) {
+            return self.evalBlockStatement(&expression.consequence);
+        } else if (expression.alternative) |*alternative| {
+            return self.evalBlockStatement(alternative);
+        } else {
+            return wrapResult(.value, NULL);
         }
     }
 
-    return result;
-}
-
-fn evalBlockStatement(block_statement: *const StatementType.BlockStatement) ?EvalResult {
-    return evalStatements(block_statement.statements.items);
-}
-
-fn evalStatement(statement: *const StatementType) ?EvalResult {
-    return switch (statement.*) {
-        .expression => |*expression_statement| evalExpressionStatement(expression_statement),
-        .@"return" => |*return_statement| evalReturnStatement(return_statement),
-        .block => |*block_statement| evalBlockStatement(block_statement),
-        else => null,
-    };
-}
-
-fn evalReturnStatement(return_statement: *const StatementType.ReturnStatement) ?EvalResult {
-    const value_result = evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
-
-    return wrapResult(.return_value, unwrapEvalResult(value_result));
-}
-
-fn evalExpressionStatement(expression_statement: *const StatementType.ExpressionStatement) ?EvalResult {
-    if (expression_statement.expression) |*expression| {
-        return evalExpression(expression);
+    fn isTruthy(obj: Object) bool {
+        return switch (obj) {
+            .null => false,
+            .bool => |boolean| boolean.value,
+            else => true,
+        };
     }
-
-    return null;
-}
-
-fn evalExpression(expression: *const ExpressionType) ?EvalResult {
-    return switch (expression.*) {
-        .integer_literal => |integer_literal| wrapResult(.value, .{
-            .int = Object.Integer.init(integer_literal.value),
-        }),
-        .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
-        .prefix_expression => |*prefix_expression| {
-            const right_result = evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
-            const right = switch (right_result) {
-                .value => |value| value,
-                .return_value => |value| return wrapResult(.return_value, value),
-            };
-
-            return wrapResult(.value, evalPrefixExpression(prefix_expression, right));
-        },
-        .infix_expression => |*infix_expression| {
-            const left_result = evalExpression(&infix_expression.*.left.expression.?) orelse return null;
-            const left = switch (left_result) {
-                .value => |value| value,
-                .return_value => |value| return wrapResult(.return_value, value),
-            };
-
-            const right_result = evalExpression(&infix_expression.*.right.expression.?) orelse return null;
-            const right = switch (right_result) {
-                .value => |value| value,
-                .return_value => |value| return wrapResult(.return_value, value),
-            };
-
-            return wrapResult(.value, evalInfixExpression(infix_expression, &left, &right));
-        },
-        .if_expression => |*if_expression| return evalIfExpression(if_expression),
-        else => null,
-    };
-}
-
-fn evalInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) Object {
-    return switch (right.*) {
-        .int => |*right_ptr| switch (left.*) {
-            .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
-            else => NULL,
-        },
-        .bool => |*right_ptr| switch (left.*) {
-            .bool => |*left_ptr| evalBoolInfixExpression(expression, left_ptr, right_ptr),
-            else => NULL,
-        },
-        else => NULL,
-    };
-}
-
-fn evalIntInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Integer, right: *const Object.Integer) Object {
-    return switch (expression.token.token_type) {
-        .plus => .{ .int = Object.Integer.init(left.value + right.value) },
-        .minus => .{ .int = Object.Integer.init(left.value - right.value) },
-        .asterisk => .{ .int = Object.Integer.init(left.value * right.value) },
-        .slash => .{ .int = Object.Integer.init(@divTrunc(left.value, right.value)) },
-        .lt => if (left.value < right.value) TRUE else FALSE,
-        .gt => if (left.value > right.value) TRUE else FALSE,
-        .eq => if (left.value == right.value) TRUE else FALSE,
-        .not_eq => if (left.value != right.value) TRUE else FALSE,
-        else => NULL,
-    };
-}
-fn evalBoolInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Boolean, right: *const Object.Boolean) Object {
-    return switch (expression.token.token_type) {
-        .eq => if (left.value == right.value) TRUE else FALSE,
-        .not_eq => if (left.value != right.value) TRUE else FALSE,
-        else => NULL,
-    };
-}
-
-fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) Object {
-    return switch (operator.token.token_type) {
-        .bang => return evalBangOperatorExpression(right),
-        .minus => return evalMinusPrefixOperatorExpression(right),
-        else => NULL,
-    };
-}
-
-fn evalBangOperatorExpression(right: Object) Object {
-    return switch (right) {
-        .bool => |boolean| if (boolean.value) FALSE else TRUE,
-        .null => TRUE,
-        else => FALSE,
-    };
-}
-
-fn evalMinusPrefixOperatorExpression(right: Object) Object {
-    return switch (right) {
-        .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
-        else => NULL,
-    };
-}
-
-fn evalIfExpression(expression: *const ExpressionType.IfExpression) ?EvalResult {
-    const condition_result: EvalResult = evalNode(expression.condition) orelse wrapResult(.value, NULL);
-    const condition = switch (condition_result) {
-        .value => |value| value,
-        .return_value => |value| return wrapResult(.return_value, value),
-    };
-
-    if (isTruthy(condition)) {
-        return evalBlockStatement(&expression.consequence);
-    } else if (expression.alternative) |*alternative| {
-        return evalBlockStatement(alternative);
-    } else {
-        return wrapResult(.value, NULL);
-    }
-}
-
-fn isTruthy(obj: Object) bool {
-    return switch (obj) {
-        .null => false,
-        .bool => |boolean| boolean.value,
-        else => true,
-    };
-}
+};
 
 fn testNullObject(obj: ?Object) !void {
     const obj_value = obj orelse return error.TestUnexpectedResult;
@@ -257,13 +286,42 @@ fn testBooleanObjectEqual(obj: ?Object, expected: bool) !void {
     try testing.expectEqual(expected, boolean.value);
 }
 
+fn testErrorObjectMessageEqual(obj: ?Object, expected: []const u8) !void {
+    const obj_value = obj orelse return error.TestUnexpectedResult;
+
+    switch (obj_value) {
+        inline else => |value| {
+            const ValueType = @TypeOf(value);
+
+            if (comptime @hasField(ValueType, "message")) {
+                const message: []const u8 = @field(value, "message");
+                try testing.expectEqualStrings(expected, message);
+                return;
+            }
+
+            if (comptime @hasField(ValueType, "Message")) {
+                const message: []const u8 = @field(value, "Message");
+                try testing.expectEqualStrings(expected, message);
+                return;
+            }
+
+            std.debug.print(
+                "Expected error object for input, got tag {s} instead.\n",
+                .{@tagName(obj_value)},
+            );
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
 fn testEval(input: []const u8, allocator: std.mem.Allocator) !?Object {
     var lexer = Lexer.init(input);
     var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
 
     const program = try parser.parse();
-    return eval(program);
+    var evaluator = Evaluator.init(allocator);
+    return evaluator.eval(program);
 }
 
 test "eval integer expression" {
@@ -546,5 +604,60 @@ test "return statements" {
     for (tests) |case| {
         const evaluated = try testEval(case.input, testing.allocator);
         try testIntegerObjectEqual(evaluated, case.expected);
+    }
+}
+
+test "error handling" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected_message: []const u8,
+    }{
+        .{
+            .input = "5 + true;",
+            .expected_message = "type mismatch: INTEGER + BOOLEAN",
+        },
+        .{
+            .input = "5 + true; 5;",
+            .expected_message = "type mismatch: INTEGER + BOOLEAN",
+        },
+        .{
+            .input = "-true",
+            .expected_message = "unknown operator: -BOOLEAN",
+        },
+        .{
+            .input = "true + false;",
+            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+        },
+        .{
+            .input = "5; true + false; 5",
+            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+        },
+        .{
+            .input = "if (10 > 1) { true + false; }",
+            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+        },
+        .{
+            .input =
+            \\if (10 > 1) {
+            \\  if (10 > 1) {
+            \\    return true + false;
+            \\  }
+            \\
+            \\  return 1;
+            \\}
+            ,
+            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+        },
+    };
+
+    for (tests) |case| {
+        const evaluated = try testEval(case.input, testing.allocator);
+        testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
+            std.debug.print(
+                "Got wrong error object for input:\n{s}\n",
+                .{case.input},
+            );
+            return err;
+        };
     }
 }
