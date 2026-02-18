@@ -13,6 +13,12 @@ pub const Object = union(enum) {
         pub fn init(m: []const u8) Error {
             return .{ .msg = m };
         }
+
+        pub fn inspect(self: *const Object.Error, writer: *std.Io.Writer) !void {
+            try writer.writeAll("ERROR: ");
+            try writer.writeAll(self.msg);
+            try writer.flush();
+        }
     };
 
     pub const Integer = struct {
@@ -57,6 +63,10 @@ pub const Object = union(enum) {
             try writer.flush();
         }
     };
+
+    pub fn typeName(self: *const Self) []const u8 {
+        return @tagName(self.*);
+    }
 
     pub fn inspect(self: *const Self, writer: *std.Io.Writer) !void {
         switch (self.*) {

@@ -13,9 +13,10 @@ const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 
 pub const Evaluator = struct {
-    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
 
     const Self = @This();
+    const EvalError = error{OutOfMemory};
 
     const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
     const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
@@ -30,20 +31,27 @@ pub const Evaluator = struct {
     const EvalResultTag = std.meta.Tag(EvalResult);
 
     pub fn init(allocator: std.mem.Allocator) Self {
-        return .{ .allocator = allocator };
+        return .{ .arena = std.heap.ArenaAllocator.init(allocator) };
     }
 
-    pub fn eval(self: *Self, node: anytype) ?Object {
-        _ = self.allocator;
-        const result = self.evalNode(node) orelse return null;
+    pub fn deinit(self: *Self) void {
+        self.arena.deinit();
+    }
+
+    pub fn reset(self: *Self) void {
+        _ = self.arena.reset(.retain_capacity);
+    }
+
+    pub fn eval(self: *Self, node: anytype) EvalError!?Object {
+        const result = try self.evalNode(node) orelse return null;
         return unwrapEvalResult(result);
     }
 
-    fn evalNode(self: *Self, node: anytype) ?EvalResult {
+    fn evalNode(self: *Self, node: anytype) EvalError!?EvalResult {
         return switch (@TypeOf(node)) {
-            *Program, *const Program => self.evalProgram(node),
+            *Program, *const Program => try self.evalProgram(node),
             *StatementType, *const StatementType => self.evalStatement(node),
-            *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => self.evalExpressionStatement(node),
+            *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => try self.evalExpressionStatement(node),
             *ExpressionType, *const ExpressionType => self.evalExpression(node),
             inline else => @compileError("unsupported node type for eval"),
         };
@@ -65,25 +73,25 @@ pub const Evaluator = struct {
         };
     }
 
-    fn errorMsg(self: *Self, comptime format: []const u8, args: anytype) ![]const u8 {
-        return try std.fmt.allocPrint(self.allocator, format, args);
+    fn errorMsg(self: *Self, comptime format: []const u8, args: anytype) EvalError![]const u8 {
+        return try std.fmt.allocPrint(self.arena.allocator(), format, args);
     }
 
-    fn errorObj(self: *Self, comptime format: []const u8, args: anytype) !Object {
+    fn errorObj(self: *Self, comptime format: []const u8, args: anytype) EvalError!Object {
         return .{
-            .err = Object.Error.init(self.errorMsg(format, args)),
+            .err = Object.Error.init(try self.errorMsg(format, args)),
         };
     }
 
-    fn evalProgram(self: *Self, program: *const Program) ?EvalResult {
-        return self.evalStatements(program.statements.items);
+    fn evalProgram(self: *Self, program: *const Program) EvalError!?EvalResult {
+        return try self.evalStatements(program.statements.items);
     }
 
-    fn evalStatements(self: *Self, statements: []const StatementType) ?EvalResult {
+    fn evalStatements(self: *Self, statements: []const StatementType) EvalError!?EvalResult {
         var result: ?EvalResult = null;
 
         for (statements) |*statement| {
-            result = self.evalStatement(statement);
+            result = try self.evalStatement(statement);
 
             if (result) |evaluated| {
                 switch (evaluated) {
@@ -96,82 +104,113 @@ pub const Evaluator = struct {
         return result;
     }
 
-    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) ?EvalResult {
-        return self.evalStatements(block_statement.statements.items);
+    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) EvalError!?EvalResult {
+        return try self.evalStatements(block_statement.statements.items);
     }
 
-    fn evalStatement(self: *Self, statement: *const StatementType) ?EvalResult {
+    fn evalStatement(self: *Self, statement: *const StatementType) EvalError!?EvalResult {
         return switch (statement.*) {
-            .expression => |*expression_statement| self.evalExpressionStatement(expression_statement),
+            .expression => |*expression_statement| try self.evalExpressionStatement(expression_statement),
             .@"return" => |*return_statement| self.evalReturnStatement(return_statement),
             .block => |*block_statement| self.evalBlockStatement(block_statement),
             else => null,
         };
     }
 
-    fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) ?EvalResult {
-        const value_result = self.evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
+    fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) EvalError!?EvalResult {
+        const value_result = try self.evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
 
-        return wrapResult(.return_value, unwrapEvalResult(value_result));
+        return switch (value_result) {
+            .value => |value| wrapResult(.return_value, value),
+            .return_value => |value| wrapResult(.return_value, value),
+            .err => |value| wrapResult(.err, value),
+        };
     }
 
-    fn evalExpressionStatement(self: *Self, expression_statement: *const StatementType.ExpressionStatement) ?EvalResult {
+    fn evalExpressionStatement(self: *Self, expression_statement: *const StatementType.ExpressionStatement) EvalError!?EvalResult {
         if (expression_statement.expression) |*expression| {
-            return self.evalExpression(expression);
+            return try self.evalExpression(expression);
         }
 
         return null;
     }
 
-    fn evalExpression(self: *Self, expression: *const ExpressionType) ?EvalResult {
+    fn evalExpression(self: *Self, expression: *const ExpressionType) EvalError!?EvalResult {
         return switch (expression.*) {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
             }),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
             .prefix_expression => |*prefix_expression| {
-                const right_result = self.evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
+                const right_result = try self.evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
                 const right = switch (right_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
                     .err => |value| return wrapResult(.err, value),
                 };
 
-                return wrapResult(.value, evalPrefixExpression(prefix_expression, right));
+                const evaluated = try self.evalPrefixExpression(prefix_expression, right);
+                return switch (evaluated) {
+                    .err => wrapResult(.err, evaluated),
+                    else => wrapResult(.value, evaluated),
+                };
             },
             .infix_expression => |*infix_expression| {
-                const left_result = self.evalExpression(&infix_expression.*.left.expression.?) orelse return null;
+                const left_result = try self.evalExpression(&infix_expression.*.left.expression.?) orelse return null;
                 const left = switch (left_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
                     .err => |value| return wrapResult(.err, value),
                 };
 
-                const right_result = self.evalExpression(&infix_expression.*.right.expression.?) orelse return null;
+                const right_result = try self.evalExpression(&infix_expression.*.right.expression.?) orelse return null;
                 const right = switch (right_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
                     .err => |value| return wrapResult(.err, value),
                 };
 
-                return wrapResult(.value, evalInfixExpression(infix_expression, &left, &right));
+                const evaluated = try self.evalInfixExpression(infix_expression, &left, &right);
+                return switch (evaluated) {
+                    .err => wrapResult(.err, evaluated),
+                    else => wrapResult(.value, evaluated),
+                };
             },
             .if_expression => |*if_expression| self.evalIfExpression(if_expression),
             else => null,
         };
     }
 
-    fn evalInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) Object {
+    fn evalInfixExpression(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {
         return switch (right.*) {
             .int => |*right_ptr| switch (left.*) {
                 .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
-                else => NULL,
+                else => self.errorObj("type mismatch: {s} {s} {s}", .{
+                    left.typeName(),
+                    expression.token.ch,
+                    right.typeName(),
+                }),
             },
             .bool => |*right_ptr| switch (left.*) {
-                .bool => |*left_ptr| evalBoolInfixExpression(expression, left_ptr, right_ptr),
-                else => NULL,
+                .bool => |*left_ptr| switch (expression.token.token_type) {
+                    .eq, .not_eq => evalBoolInfixExpression(expression, left_ptr, right_ptr),
+                    else => self.errorObj("unknown operator {s} {s} {s}", .{
+                        left.typeName(),
+                        expression.token.ch,
+                        right.typeName(),
+                    }),
+                },
+                else => self.errorObj("type mismatch: {s} {s} {s}", .{
+                    left.typeName(),
+                    expression.token.ch,
+                    right.typeName(),
+                }),
             },
-            else => NULL,
+            else => self.errorObj("unknown operator {s} {s} {s}", .{
+                left.typeName(),
+                expression.token.ch,
+                right.typeName(),
+            }),
         };
     }
 
@@ -197,11 +236,14 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalPrefixExpression(operator: *const ExpressionType.PrefixExpression, right: Object) Object {
+    fn evalPrefixExpression(self: *Self, operator: *const ExpressionType.PrefixExpression, right: Object) EvalError!Object {
         return switch (operator.token.token_type) {
             .bang => evalBangOperatorExpression(right),
-            .minus => evalMinusPrefixOperatorExpression(right),
-            else => NULL,
+            .minus => try self.evalMinusPrefixOperatorExpression(right),
+            else => try self.errorObj("unknown operator: {s}{s}", .{
+                operator.token.ch,
+                right.typeName(),
+            }),
         };
     }
 
@@ -213,15 +255,15 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalMinusPrefixOperatorExpression(right: Object) Object {
+    fn evalMinusPrefixOperatorExpression(self: *Self, right: Object) EvalError!Object {
         return switch (right) {
             .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
-            else => NULL,
+            else => try self.errorObj("unknown operator: -{s}", .{right.typeName()}),
         };
     }
 
-    fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) ?EvalResult {
-        const condition_result: EvalResult = self.evalNode(expression.condition) orelse wrapResult(.value, NULL);
+    fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) EvalError!?EvalResult {
+        const condition_result: EvalResult = try self.evalNode(expression.condition) orelse wrapResult(.value, NULL);
         const condition = switch (condition_result) {
             .value => |value| value,
             .return_value => |value| return wrapResult(.return_value, value),
@@ -290,37 +332,25 @@ fn testErrorObjectMessageEqual(obj: ?Object, expected: []const u8) !void {
     const obj_value = obj orelse return error.TestUnexpectedResult;
 
     switch (obj_value) {
-        inline else => |value| {
-            const ValueType = @TypeOf(value);
-
-            if (comptime @hasField(ValueType, "message")) {
-                const message: []const u8 = @field(value, "message");
-                try testing.expectEqualStrings(expected, message);
-                return;
-            }
-
-            if (comptime @hasField(ValueType, "Message")) {
-                const message: []const u8 = @field(value, "Message");
-                try testing.expectEqualStrings(expected, message);
-                return;
-            }
-
+        .err => |err_obj| {
+            try testing.expectEqualStrings(expected, err_obj.msg);
+        },
+        else => {
             std.debug.print(
                 "Expected error object for input, got tag {s} instead.\n",
-                .{@tagName(obj_value)},
+                .{obj_value.typeName()},
             );
             return error.TestUnexpectedResult;
         },
     }
 }
 
-fn testEval(input: []const u8, allocator: std.mem.Allocator) !?Object {
+fn testEval(input: []const u8, allocator: std.mem.Allocator, evaluator: *Evaluator) !?Object {
     var lexer = Lexer.init(input);
     var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
 
     const program = try parser.parse();
-    var evaluator = Evaluator.init(allocator);
     return evaluator.eval(program);
 }
 
@@ -396,7 +426,10 @@ test "eval integer expression" {
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
             std.debug.print(
                 "Got wrong value for input {s}",
@@ -491,7 +524,10 @@ test "eval boolean" {
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
     }
 }
@@ -528,7 +564,10 @@ test "bang operator" {
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
     }
 }
@@ -569,7 +608,10 @@ test "if else expressions" {
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         if (case.expected) |expected| {
             try testIntegerObjectEqual(evaluated, expected);
         } else {
@@ -602,7 +644,10 @@ test "return statements" {
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
     }
 }
@@ -614,27 +659,27 @@ test "error handling" {
     }{
         .{
             .input = "5 + true;",
-            .expected_message = "type mismatch: INTEGER + BOOLEAN",
+            .expected_message = "type mismatch: int + bool",
         },
         .{
             .input = "5 + true; 5;",
-            .expected_message = "type mismatch: INTEGER + BOOLEAN",
+            .expected_message = "type mismatch: int + bool",
         },
         .{
             .input = "-true",
-            .expected_message = "unknown operator: -BOOLEAN",
+            .expected_message = "unknown operator: -bool",
         },
         .{
             .input = "true + false;",
-            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+            .expected_message = "unknown operator bool + bool",
         },
         .{
             .input = "5; true + false; 5",
-            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+            .expected_message = "unknown operator bool + bool",
         },
         .{
             .input = "if (10 > 1) { true + false; }",
-            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+            .expected_message = "unknown operator bool + bool",
         },
         .{
             .input =
@@ -646,12 +691,15 @@ test "error handling" {
             \\  return 1;
             \\}
             ,
-            .expected_message = "unknown operator: BOOLEAN + BOOLEAN",
+            .expected_message = "unknown operator bool + bool",
         },
     };
 
     for (tests) |case| {
-        const evaluated = try testEval(case.input, testing.allocator);
+        var evaluator = Evaluator.init(testing.allocator);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
             std.debug.print(
                 "Got wrong error object for input:\n{s}\n",

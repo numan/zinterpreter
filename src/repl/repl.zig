@@ -28,11 +28,13 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     const stdin = &stdin_reader.interface;
 
     var evaluator = Evaluator.init(allocator);
+    defer evaluator.deinit();
 
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();
 
     while (stdin.takeDelimiterExclusive('\n')) |line| {
+        defer evaluator.reset();
         stdin.toss(1);
 
         var lexer = Lexer.init(line);
@@ -47,7 +49,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             continue;
         }
 
-        const eval = evaluator.eval(program);
+        const eval = try evaluator.eval(program);
 
         if (eval) |*obj| {
             try obj.*.inspect(stdout);
