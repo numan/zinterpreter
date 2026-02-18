@@ -16,7 +16,19 @@ const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
 const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
 const NULL: Object = .{ .null = Object.Null.init() };
 
+const EvalResult = union(enum) {
+    value: Object,
+    return_value: Object,
+};
+
+const EvalResultTag = std.meta.Tag(EvalResult);
+
 pub fn eval(node: anytype) ?Object {
+    const result = evalNode(node) orelse return null;
+    return unwrapEvalResult(result);
+}
+
+fn evalNode(node: anytype) ?EvalResult {
     return switch (@TypeOf(node)) {
         *Program, *const Program => evalProgram(node),
         *StatementType, *const StatementType => evalStatement(node),
@@ -26,28 +38,61 @@ pub fn eval(node: anytype) ?Object {
     };
 }
 
-fn evalProgram(program: *const Program) ?Object {
+inline fn unwrapEvalResult(result: EvalResult) Object {
+    return switch (result) {
+        .value => |value| value,
+        .return_value => |value| value,
+    };
+}
+
+inline fn wrapResult(tag: EvalResultTag, value: Object) EvalResult {
+    return switch (tag) {
+        .value => .{ .value = value },
+        .return_value => .{ .return_value = value },
+    };
+}
+
+fn evalProgram(program: *const Program) ?EvalResult {
     return evalStatements(program.statements.items);
 }
 
-fn evalStatements(statements: []const StatementType) ?Object {
-    var result: ?Object = null;
+fn evalStatements(statements: []const StatementType) ?EvalResult {
+    var result: ?EvalResult = null;
 
     for (statements) |*statement| {
         result = evalStatement(statement);
+
+        if (result) |evaluated| {
+            switch (evaluated) {
+                .return_value => return evaluated,
+                .value => {},
+            }
+        }
     }
 
     return result;
 }
 
-fn evalStatement(statement: *const StatementType) ?Object {
+fn evalBlockStatement(block_statement: *const StatementType.BlockStatement) ?EvalResult {
+    return evalStatements(block_statement.statements.items);
+}
+
+fn evalStatement(statement: *const StatementType) ?EvalResult {
     return switch (statement.*) {
         .expression => |*expression_statement| evalExpressionStatement(expression_statement),
+        .@"return" => |*return_statement| evalReturnStatement(return_statement),
+        .block => |*block_statement| evalBlockStatement(block_statement),
         else => null,
     };
 }
 
-fn evalExpressionStatement(expression_statement: *const StatementType.ExpressionStatement) ?Object {
+fn evalReturnStatement(return_statement: *const StatementType.ReturnStatement) ?EvalResult {
+    const value_result = evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
+
+    return wrapResult(.return_value, unwrapEvalResult(value_result));
+}
+
+fn evalExpressionStatement(expression_statement: *const StatementType.ExpressionStatement) ?EvalResult {
     if (expression_statement.expression) |*expression| {
         return evalExpression(expression);
     }
@@ -55,20 +100,35 @@ fn evalExpressionStatement(expression_statement: *const StatementType.Expression
     return null;
 }
 
-fn evalExpression(expression: *const ExpressionType) ?Object {
+fn evalExpression(expression: *const ExpressionType) ?EvalResult {
     return switch (expression.*) {
-        .integer_literal => |integer_literal| .{
+        .integer_literal => |integer_literal| wrapResult(.value, .{
             .int = Object.Integer.init(integer_literal.value),
-        },
-        .boolean_literal => |boolean_literal| if (boolean_literal.value) TRUE else FALSE,
+        }),
+        .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
         .prefix_expression => |*prefix_expression| {
-            const right = evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
-            return evalPrefixExpression(prefix_expression, right);
+            const right_result = evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
+            const right = switch (right_result) {
+                .value => |value| value,
+                .return_value => |value| return wrapResult(.return_value, value),
+            };
+
+            return wrapResult(.value, evalPrefixExpression(prefix_expression, right));
         },
         .infix_expression => |*infix_expression| {
-            const left = evalExpression(&infix_expression.*.left.expression.?) orelse return null;
-            const right = evalExpression(&infix_expression.*.right.expression.?) orelse return null;
-            return evalInfixExpression(infix_expression, &left, &right);
+            const left_result = evalExpression(&infix_expression.*.left.expression.?) orelse return null;
+            const left = switch (left_result) {
+                .value => |value| value,
+                .return_value => |value| return wrapResult(.return_value, value),
+            };
+
+            const right_result = evalExpression(&infix_expression.*.right.expression.?) orelse return null;
+            const right = switch (right_result) {
+                .value => |value| value,
+                .return_value => |value| return wrapResult(.return_value, value),
+            };
+
+            return wrapResult(.value, evalInfixExpression(infix_expression, &left, &right));
         },
         .if_expression => |*if_expression| return evalIfExpression(if_expression),
         else => null,
@@ -133,15 +193,19 @@ fn evalMinusPrefixOperatorExpression(right: Object) Object {
     };
 }
 
-fn evalIfExpression(expression: *const ExpressionType.IfExpression) ?Object {
-    const condition = eval(expression.condition) orelse NULL;
+fn evalIfExpression(expression: *const ExpressionType.IfExpression) ?EvalResult {
+    const condition_result: EvalResult = evalNode(expression.condition) orelse wrapResult(.value, NULL);
+    const condition = switch (condition_result) {
+        .value => |value| value,
+        .return_value => |value| return wrapResult(.return_value, value),
+    };
 
     if (isTruthy(condition)) {
-        return evalStatements(expression.consequence.statements.items);
-    } else if (expression.alternative) |alternative| {
-        return evalStatements(alternative.statements.items);
+        return evalBlockStatement(&expression.consequence);
+    } else if (expression.alternative) |*alternative| {
+        return evalBlockStatement(alternative);
     } else {
-        return NULL;
+        return wrapResult(.value, NULL);
     }
 }
 
@@ -453,5 +517,34 @@ test "if else expressions" {
         } else {
             try testNullObject(evaluated);
         }
+    }
+}
+
+test "return statements" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "return 10;", .expected = 10 },
+        .{ .input = "return 10; 9;", .expected = 10 },
+        .{ .input = "return 2 * 5; 9;", .expected = 10 },
+        .{ .input = "9; return 2 * 5; 9;", .expected = 10 },
+        .{
+            .input =
+            \\if (10 > 1) {
+            \\  if (10 > 1) {
+            \\    return 10;
+            \\  }
+            \\
+            \\  return 1;
+            \\}
+            ,
+            .expected = 10,
+        },
+    };
+
+    for (tests) |case| {
+        const evaluated = try testEval(case.input, testing.allocator);
+        try testIntegerObjectEqual(evaluated, case.expected);
     }
 }

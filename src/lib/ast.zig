@@ -402,6 +402,15 @@ pub const StatementType = union(enum) {
         }
     }
 
+    pub fn deinit(self: *StatementType, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .let => |*let_stmt| let_stmt.value.deinit(allocator),
+            .@"return" => |*return_stmt| return_stmt.value.deinit(allocator),
+            .expression => |*exp_stmt| exp_stmt.deinit(allocator),
+            .block => |*block_stmt| block_stmt.deinit(allocator),
+        }
+    }
+
     pub const BlockStatement = struct {
         token: Token,
         statements: ArrayList(StatementType) = .empty,
@@ -429,10 +438,7 @@ pub const StatementType = union(enum) {
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             for (self.statements.items) |*stmt| {
-                switch (stmt.*) {
-                    .expression => |*exp_stmt| exp_stmt.deinit(allocator),
-                    else => {},
-                }
+                stmt.deinit(allocator);
             }
             self.statements.deinit(self.allocator);
         }
@@ -610,10 +616,7 @@ pub const Program = struct {
 
     pub fn deinit(self: *Program) void {
         for (self.statements.items) |*stmt| {
-            switch (stmt.*) {
-                .expression => |*exp_stmt| exp_stmt.deinit(self.allocator),
-                else => {},
-            }
+            stmt.deinit(self.allocator);
         }
         self.statements.deinit(self.allocator);
     }
