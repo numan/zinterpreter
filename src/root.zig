@@ -18,4 +18,5 @@ comptime {
 // All the tests go here
 comptime {
     _ = @import("lib/parser_test.zig");
+    _ = @import("lib/evaluator_test.zig");
 }
