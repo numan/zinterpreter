@@ -2,14 +2,18 @@ const std = @import("std");
 
 const ast = @import("ast.zig");
 const object = @import("object.zig");
+const environment = @import("environment.zig");
 
 const ExpressionType = ast.ExpressionType;
 const Program = ast.Program;
+const Identifier = ast.Identifier;
 const StatementType = ast.StatementType;
 const Object = object.Object;
+const Environment = environment.Environment;
 
 pub const Evaluator = struct {
     arena: std.heap.ArenaAllocator,
+    environment: *Environment,
 
     const Self = @This();
     const EvalError = error{OutOfMemory};
@@ -26,8 +30,11 @@ pub const Evaluator = struct {
 
     const EvalResultTag = std.meta.Tag(EvalResult);
 
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{ .arena = std.heap.ArenaAllocator.init(allocator) };
+    pub fn init(allocator: std.mem.Allocator, env: *Environment) Self {
+        return .{
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .environment = env,
+        };
     }
 
     pub fn deinit(self: *Self) void {
@@ -106,11 +113,24 @@ pub const Evaluator = struct {
 
     fn evalStatement(self: *Self, statement: *const StatementType) EvalError!?EvalResult {
         return switch (statement.*) {
+            .let => |*let_statement| try self.evalLetStatement(let_statement),
             .expression => |*expression_statement| try self.evalExpressionStatement(expression_statement),
             .@"return" => |*return_statement| self.evalReturnStatement(return_statement),
             .block => |*block_statement| self.evalBlockStatement(block_statement),
-            else => null,
         };
+    }
+
+    fn evalLetStatement(self: *Self, let_statement: *const StatementType.LetStatement) EvalError!?EvalResult {
+        const value_result = try self.evalExpressionStatement(&let_statement.value) orelse return wrapResult(.return_value, NULL);
+
+        const value = switch (value_result) {
+            .value => |value| value,
+            .return_value => |value| return wrapResult(.return_value, value),
+            .err => |value| return wrapResult(.err, value),
+        };
+
+        _ = try self.environment.set(let_statement.name.token.ch, value);
+        return wrapResult(.value, NULL);
     }
 
     fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) EvalError!?EvalResult {
@@ -136,6 +156,7 @@ pub const Evaluator = struct {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
             }),
+            .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
             .prefix_expression => |*prefix_expression| {
                 const right_result = try self.evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
@@ -175,6 +196,15 @@ pub const Evaluator = struct {
             .if_expression => |*if_expression| self.evalIfExpression(if_expression),
             else => null,
         };
+    }
+
+    fn evalIdentifierStatement(self: *Self, expression: *const Identifier) !Object {
+        const value = self.environment.get(expression.token.ch);
+        if (value) |v| {
+            return v;
+        } else {
+            return try self.errorObj("identifier not found: {s}", .{expression.token.ch});
+        }
     }
 
     fn evalInfixExpression(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {

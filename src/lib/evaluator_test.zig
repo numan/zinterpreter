@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const Object = @import("./object.zig").Object;
 const Evaluator = @import("./evaluator.zig").Evaluator;
+const Environment = @import("./environment.zig").Environment;
 const Lexer = @import("./lexer.zig").Lexer;
 const Parser = @import("./parser.zig").Parser;
 
@@ -144,7 +145,10 @@ test "eval integer expression" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -242,7 +246,10 @@ test "eval boolean" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -282,7 +289,10 @@ test "bang operator" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -326,7 +336,10 @@ test "if else expressions" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -362,7 +375,10 @@ test "return statements" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -418,7 +434,10 @@ test "error handling" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
@@ -444,7 +463,10 @@ test "let statements" {
     };
 
     for (tests) |case| {
-        var evaluator = Evaluator.init(testing.allocator);
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
