@@ -45,17 +45,16 @@ pub const Evaluator = struct {
         _ = self.arena.reset(.retain_capacity);
     }
 
-    pub fn eval(self: *Self, node: anytype) EvalError!?Object {
-        const result = try self.evalNode(node) orelse return null;
-        return unwrapEvalResult(result);
+    pub fn eval(self: *Self, node: anytype) EvalError!Object {
+        return unwrapEvalResult(try self.evalNode(node));
     }
 
-    fn evalNode(self: *Self, node: anytype) EvalError!?EvalResult {
+    fn evalNode(self: *Self, node: anytype) EvalError!EvalResult {
         return switch (@TypeOf(node)) {
             *Program, *const Program => try self.evalProgram(node),
-            *StatementType, *const StatementType => self.evalStatement(node),
+            *StatementType, *const StatementType => try self.evalStatement(node),
             *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => try self.evalExpressionStatement(node),
-            *ExpressionType, *const ExpressionType => self.evalExpression(node),
+            *ExpressionType, *const ExpressionType => try self.evalExpression(node),
             inline else => @compileError("unsupported node type for eval"),
         };
     }
@@ -86,42 +85,40 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalProgram(self: *Self, program: *const Program) EvalError!?EvalResult {
+    fn evalProgram(self: *Self, program: *const Program) EvalError!EvalResult {
         return try self.evalStatements(program.statements.items);
     }
 
-    fn evalStatements(self: *Self, statements: []const StatementType) EvalError!?EvalResult {
-        var result: ?EvalResult = null;
+    fn evalStatements(self: *Self, statements: []const StatementType) EvalError!EvalResult {
+        var result = wrapResult(.value, NULL);
 
         for (statements) |*statement| {
             result = try self.evalStatement(statement);
 
-            if (result) |evaluated| {
-                switch (evaluated) {
-                    .return_value, .err => return evaluated,
-                    else => {},
-                }
+            switch (result) {
+                .return_value, .err => return result,
+                else => {},
             }
         }
 
         return result;
     }
 
-    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) EvalError!?EvalResult {
+    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) EvalError!EvalResult {
         return try self.evalStatements(block_statement.statements.items);
     }
 
-    fn evalStatement(self: *Self, statement: *const StatementType) EvalError!?EvalResult {
+    fn evalStatement(self: *Self, statement: *const StatementType) EvalError!EvalResult {
         return switch (statement.*) {
             .let => |*let_statement| try self.evalLetStatement(let_statement),
             .expression => |*expression_statement| try self.evalExpressionStatement(expression_statement),
-            .@"return" => |*return_statement| self.evalReturnStatement(return_statement),
-            .block => |*block_statement| self.evalBlockStatement(block_statement),
+            .@"return" => |*return_statement| try self.evalReturnStatement(return_statement),
+            .block => |*block_statement| try self.evalBlockStatement(block_statement),
         };
     }
 
-    fn evalLetStatement(self: *Self, let_statement: *const StatementType.LetStatement) EvalError!?EvalResult {
-        const value_result = try self.evalExpressionStatement(&let_statement.value) orelse return wrapResult(.return_value, NULL);
+    fn evalLetStatement(self: *Self, let_statement: *const StatementType.LetStatement) EvalError!EvalResult {
+        const value_result = try self.evalExpressionStatement(&let_statement.value);
 
         const value = switch (value_result) {
             .value => |value| value,
@@ -133,8 +130,9 @@ pub const Evaluator = struct {
         return wrapResult(.value, NULL);
     }
 
-    fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) EvalError!?EvalResult {
-        const value_result = try self.evalExpressionStatement(&return_statement.value) orelse return wrapResult(.return_value, NULL);
+    fn evalReturnStatement(self: *Self, return_statement: *const StatementType.ReturnStatement) EvalError!EvalResult {
+        const return_expr = return_statement.value orelse return wrapResult(.return_value, NULL);
+        const value_result = try self.evalExpressionStatement(&return_expr);
 
         return switch (value_result) {
             .value => |value| wrapResult(.return_value, value),
@@ -143,15 +141,11 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalExpressionStatement(self: *Self, expression_statement: *const StatementType.ExpressionStatement) EvalError!?EvalResult {
-        if (expression_statement.expression) |*expression| {
-            return try self.evalExpression(expression);
-        }
-
-        return null;
+    fn evalExpressionStatement(self: *Self, expression_statement: *const StatementType.ExpressionStatement) EvalError!EvalResult {
+        return try self.evalExpression(&expression_statement.expression);
     }
 
-    fn evalExpression(self: *Self, expression: *const ExpressionType) EvalError!?EvalResult {
+    fn evalExpression(self: *Self, expression: *const ExpressionType) EvalError!EvalResult {
         return switch (expression.*) {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
@@ -159,7 +153,7 @@ pub const Evaluator = struct {
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
             .prefix_expression => |*prefix_expression| {
-                const right_result = try self.evalExpression(&prefix_expression.*.right.expression.?) orelse return null;
+                const right_result = try self.evalExpression(&prefix_expression.*.right.expression);
                 const right = switch (right_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
@@ -173,14 +167,14 @@ pub const Evaluator = struct {
                 };
             },
             .infix_expression => |*infix_expression| {
-                const left_result = try self.evalExpression(&infix_expression.*.left.expression.?) orelse return null;
+                const left_result = try self.evalExpression(&infix_expression.*.left.expression);
                 const left = switch (left_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
                     .err => |value| return wrapResult(.err, value),
                 };
 
-                const right_result = try self.evalExpression(&infix_expression.*.right.expression.?) orelse return null;
+                const right_result = try self.evalExpression(&infix_expression.*.right.expression);
                 const right = switch (right_result) {
                     .value => |value| value,
                     .return_value => |value| return wrapResult(.return_value, value),
@@ -193,8 +187,8 @@ pub const Evaluator = struct {
                     else => wrapResult(.value, evaluated),
                 };
             },
-            .if_expression => |*if_expression| self.evalIfExpression(if_expression),
-            else => null,
+            .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
+            else => wrapResult(.err, try self.errorObj("unsupported expression type: {s}", .{@tagName(expression.*)})),
         };
     }
 
@@ -288,8 +282,8 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) EvalError!?EvalResult {
-        const condition_result: EvalResult = try self.evalNode(expression.condition) orelse wrapResult(.value, NULL);
+    fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) EvalError!EvalResult {
+        const condition_result = try self.evalNode(expression.condition);
         const condition = switch (condition_result) {
             .value => |value| value,
             .return_value => |value| return wrapResult(.return_value, value),

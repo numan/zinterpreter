@@ -54,11 +54,8 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
         }
 
         const eval = try evaluator.eval(program);
-
-        if (eval) |*obj| {
-            try obj.*.inspect(stdout);
-            try stdout.writeAll("\n");
-        }
+        try eval.inspect(stdout);
+        try stdout.writeAll("\n");
 
         try stdout.print("{s} ", .{PROMPT});
 

@@ -7,10 +7,8 @@ const Environment = @import("./environment.zig").Environment;
 const Lexer = @import("./lexer.zig").Lexer;
 const Parser = @import("./parser.zig").Parser;
 
-fn testNullObject(obj: ?Object) !void {
-    const obj_value = obj orelse return error.TestUnexpectedResult;
-
-    switch (obj_value) {
+fn testNullObject(obj: Object) !void {
+    switch (obj) {
         .null => {},
         else => {
             std.debug.print("Expected null. Got something else.", .{});
@@ -19,10 +17,8 @@ fn testNullObject(obj: ?Object) !void {
     }
 }
 
-fn testIntegerObjectEqual(obj: ?Object, expected: i64) !void {
-    const obj_value = obj orelse return error.TestUnexpectedResult;
-
-    const integer = switch (obj_value) {
+fn testIntegerObjectEqual(obj: Object, expected: i64) !void {
+    const integer = switch (obj) {
         .int => |value| value,
         else => {
             std.debug.print("Expected an int. Got something else.", .{});
@@ -33,10 +29,8 @@ fn testIntegerObjectEqual(obj: ?Object, expected: i64) !void {
     try testing.expectEqual(expected, integer.value);
 }
 
-fn testBooleanObjectEqual(obj: ?Object, expected: bool) !void {
-    const obj_value = obj orelse return error.TestUnexpectedResult;
-
-    const boolean = switch (obj_value) {
+fn testBooleanObjectEqual(obj: Object, expected: bool) !void {
+    const boolean = switch (obj) {
         .bool => |value| value,
         else => {
             std.debug.print("Expected an bool. Got something else.", .{});
@@ -47,24 +41,22 @@ fn testBooleanObjectEqual(obj: ?Object, expected: bool) !void {
     try testing.expectEqual(expected, boolean.value);
 }
 
-fn testErrorObjectMessageEqual(obj: ?Object, expected: []const u8) !void {
-    const obj_value = obj orelse return error.TestUnexpectedResult;
-
-    switch (obj_value) {
+fn testErrorObjectMessageEqual(obj: Object, expected: []const u8) !void {
+    switch (obj) {
         .err => |err_obj| {
             try testing.expectEqualStrings(expected, err_obj.msg);
         },
         else => {
             std.debug.print(
                 "Expected error object for input, got tag {s} instead.\n",
-                .{obj_value.typeName()},
+                .{obj.typeName()},
             );
             return error.TestUnexpectedResult;
         },
     }
 }
 
-fn testEval(input: []const u8, allocator: std.mem.Allocator, evaluator: *Evaluator) !?Object {
+fn testEval(input: []const u8, allocator: std.mem.Allocator, evaluator: *Evaluator) !Object {
     var lexer = Lexer.init(input);
     var parser = Parser.init(allocator, &lexer);
     defer parser.deinit();
@@ -383,6 +375,25 @@ test "return statements" {
 
         const evaluated = try testEval(case.input, testing.allocator, &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
+    }
+}
+
+test "bare return statements" {
+    const tests = [_][]const u8{
+        "return;",
+        "if (10 > 1) { return; }",
+        "if (10 > 1) { if (10 > 1) { return; } return 1; }",
+    };
+
+    for (tests) |input| {
+        var env = Environment.init(testing.allocator);
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(testing.allocator, &env);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(input, testing.allocator, &evaluator);
+        try testNullObject(evaluated);
     }
 }
 

@@ -63,18 +63,14 @@ pub const Parser = struct {
     }
 
     fn parseExpressionStatement(self: *Self) ParseError!?ast.StatementType {
-        const expression = try self.parseExpression(.lowest);
+        const expression = try self.parseExpression(.lowest) orelse return null;
         if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
         }
 
-        if (expression) |expr| {
-            return ast.StatementType{
-                .expression = expr,
-            };
-        }
-
-        return null;
+        return ast.StatementType{
+            .expression = expression,
+        };
     }
 
     fn parseExpression(self: *Self, precedence: Precedence) ParseError!?ast.StatementType.ExpressionStatement {
@@ -106,7 +102,10 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        const val = try self.parseExpression(.lowest);
+        var val: ?ast.StatementType.ExpressionStatement = null;
+        if (self.current_token.token_type != .semicolon) {
+            val = try self.parseExpression(.lowest) orelse return null;
+        }
 
         if (self.peek_token.token_type == .semicolon) {
             self.nextToken();
@@ -115,7 +114,7 @@ pub const Parser = struct {
         return ast.StatementType{
             .@"return" = .{
                 .token = current_token,
-                .value = val orelse .{ .expression = null },
+                .value = val,
             },
         };
     }
@@ -235,9 +234,9 @@ pub const Parser = struct {
         self.nextToken();
 
         const condition = try self.allocator.create(ast.StatementType.ExpressionStatement);
-        const parsed_condition = try self.parseExpression(.lowest);
+        const parsed_condition = try self.parseExpression(.lowest) orelse return null;
 
-        condition.* = parsed_condition.?;
+        condition.* = parsed_condition;
 
         if (!try self.expectPeek(.rparen)) return null;
         if (!try self.expectPeek(.lbrace)) return null;

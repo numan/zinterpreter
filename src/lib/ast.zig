@@ -207,9 +207,7 @@ pub const ExpressionType = union(enum) {
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             try writer.print("if", .{});
-            if (self.condition.*.expression) |*cond_exp| {
-                try cond_exp.toString(writer);
-            }
+            try self.condition.expression.toString(writer);
             try writer.print(" ", .{});
 
             try self.consequence.toString(writer);
@@ -264,14 +262,10 @@ pub const ExpressionType = union(enum) {
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             _ = try writer.write("(");
 
-            if (self.left.*.expression) |*left_expression| {
-                try left_expression.toString(writer);
-            }
+            try self.left.expression.toString(writer);
             _ = try writer.print(" {s} ", .{self.token.ch});
 
-            if (self.right.*.expression) |*right_expression| {
-                try right_expression.toString(writer);
-            }
+            try self.right.expression.toString(writer);
 
             _ = try writer.write(")");
 
@@ -299,9 +293,7 @@ pub const ExpressionType = union(enum) {
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             try writer.print("({s}", .{self.operator});
-            if (self.right.*.expression) |*exp| {
-                try exp.toString(writer);
-            }
+            try self.right.expression.toString(writer);
             try writer.print(")", .{});
             try writer.flush();
         }
@@ -348,14 +340,10 @@ pub const ExpressionType = union(enum) {
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
-            if (self.function.expression) |*func_exp| {
-                try func_exp.toString(writer);
-            }
+            try self.function.expression.toString(writer);
             _ = try writer.write("(");
             for (self.arguments, 0..) |*arg, i| {
-                if (arg.expression) |*exp| {
-                    try exp.toString(writer);
-                }
+                try arg.expression.toString(writer);
                 if (i < self.arguments.len - 1) {
                     _ = try writer.write(", ");
                 }
@@ -405,7 +393,11 @@ pub const StatementType = union(enum) {
     pub fn deinit(self: *StatementType, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .let => |*let_stmt| let_stmt.value.deinit(allocator),
-            .@"return" => |*return_stmt| return_stmt.value.deinit(allocator),
+            .@"return" => |*return_stmt| {
+                if (return_stmt.value) |*value| {
+                    value.deinit(allocator);
+                }
+            },
             .expression => |*exp_stmt| exp_stmt.deinit(allocator),
             .block => |*block_stmt| block_stmt.deinit(allocator),
         }
@@ -445,7 +437,7 @@ pub const StatementType = union(enum) {
     };
 
     pub const ExpressionStatement = struct {
-        expression: ?ExpressionType,
+        expression: ExpressionType,
 
         const Self = @This();
 
@@ -506,66 +498,59 @@ pub const StatementType = union(enum) {
         }
 
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
-            if (self.expression) |*value| {
-                try value.toString(writer);
-            } else {
-                _ = try writer.write("");
-            }
+            try self.expression.toString(writer);
             try writer.flush();
         }
 
         pub fn deinit(self: *ExpressionStatement, allocator: std.mem.Allocator) void {
-            if (self.expression) |*exp_node| {
-                switch (exp_node.*) {
-                    .prefix_expression => |*prefix| {
-                        prefix.right.deinit(allocator);
-                        allocator.destroy(prefix.right);
-                    },
-                    .infix_expression => |*infix| {
-                        infix.left.deinit(allocator);
-                        allocator.destroy(infix.left);
-                        infix.right.deinit(allocator);
-                        allocator.destroy(infix.right);
-                    },
-                    .if_expression => |*if_exp| {
-                        if_exp.condition.deinit(allocator);
-                        allocator.destroy(if_exp.condition);
-                        if_exp.consequence.deinit(allocator);
-                        if (if_exp.alternative) |*alt| {
-                            alt.deinit(allocator);
-                        }
-                    },
-                    .function_literal => |*fun_exp| {
-                        fun_exp.body.deinit(allocator);
-                        allocator.free(fun_exp.parameters);
-                    },
-                    .call_expression => |*call_exp| {
-                        call_exp.function.deinit(allocator);
-                        allocator.destroy(call_exp.function);
-                        for (call_exp.arguments) |*arg| {
-                            arg.deinit(allocator);
-                        }
-                        allocator.free(call_exp.arguments);
-                    },
-                    else => {},
-                }
+            switch (self.expression) {
+                .prefix_expression => |*prefix| {
+                    prefix.right.deinit(allocator);
+                    allocator.destroy(prefix.right);
+                },
+                .infix_expression => |*infix| {
+                    infix.left.deinit(allocator);
+                    allocator.destroy(infix.left);
+                    infix.right.deinit(allocator);
+                    allocator.destroy(infix.right);
+                },
+                .if_expression => |*if_exp| {
+                    if_exp.condition.deinit(allocator);
+                    allocator.destroy(if_exp.condition);
+                    if_exp.consequence.deinit(allocator);
+                    if (if_exp.alternative) |*alt| {
+                        alt.deinit(allocator);
+                    }
+                },
+                .function_literal => |*fun_exp| {
+                    fun_exp.body.deinit(allocator);
+                    allocator.free(fun_exp.parameters);
+                },
+                .call_expression => |*call_exp| {
+                    call_exp.function.deinit(allocator);
+                    allocator.destroy(call_exp.function);
+                    for (call_exp.arguments) |*arg| {
+                        arg.deinit(allocator);
+                    }
+                    allocator.free(call_exp.arguments);
+                },
+                else => {},
             }
         }
     };
 
     pub const ReturnStatement = struct {
         token: Token,
-        value: ExpressionStatement,
+        value: ?ExpressionStatement,
 
         pub fn toString(self: *const ReturnStatement, writer: *std.Io.Writer) !void {
-            try writer.print("{s} ", .{
+            try writer.print("{s}", .{
                 self.token.token_type.toString(),
             });
 
-            if (self.value.expression) |*value| {
-                _ = try value.toString(writer);
-            } else {
-                _ = try writer.write("");
+            if (self.value) |*value| {
+                try writer.writeAll(" ");
+                _ = try value.expression.toString(writer);
             }
 
             _ = try writer.write(";");
@@ -585,11 +570,7 @@ pub const StatementType = union(enum) {
 
             _ = try writer.write(" = ");
 
-            if (self.value.expression) |*value| {
-                try value.toString(writer);
-            } else {
-                _ = try writer.write("");
-            }
+            try self.value.expression.toString(writer);
             _ = try writer.write(";");
             try writer.flush();
         }

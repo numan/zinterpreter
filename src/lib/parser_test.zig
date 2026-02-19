@@ -65,17 +65,9 @@ fn testLiteralExpression(exp: *const ast.ExpressionType, expected: ExpectedValue
 fn testInfixExpression(exp: *const ast.ExpressionType, left: ExpectedValue, operator: []const u8, right: ExpectedValue) !void {
     switch (exp.*) {
         .infix_expression => |infix_exp| {
-            if (infix_exp.left.expression) |*left_exp| {
-                try testLiteralExpression(left_exp, left);
-            } else {
-                return error.TestUnexpectedResult;
-            }
+            try testLiteralExpression(&infix_exp.left.expression, left);
             try testing.expectEqualStrings(operator, infix_exp.operator);
-            if (infix_exp.right.expression) |*right_exp| {
-                try testLiteralExpression(right_exp, right);
-            } else {
-                return error.TestUnexpectedResult;
-            }
+            try testLiteralExpression(&infix_exp.right.expression, right);
         },
         else => {
             std.debug.print("Expected infix expression. Got something else", .{});
@@ -196,8 +188,29 @@ test "parse return statement values" {
             },
         };
 
-        try testLiteralExpression(&return_stmt.value.expression.?, case.expected_value);
+        const return_value = return_stmt.value orelse return error.TestUnexpectedResult;
+        try testLiteralExpression(&return_value.expression, case.expected_value);
     }
+}
+
+test "parse bare return statement" {
+    const input = "return;";
+
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const return_stmt = switch (program.statements.items[0]) {
+        .@"return" => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    try testing.expect(return_stmt.value == null);
 }
 
 test "parse let error" {
@@ -293,7 +306,7 @@ test "parse let statement values" {
 
         try testing.expectEqualStrings(case.expected_identifier, let_stmt.name.value);
 
-        try testLiteralExpression(&let_stmt.value.expression.?, case.expected_value);
+        try testLiteralExpression(&let_stmt.value.expression, case.expected_value);
     }
 }
 
@@ -314,7 +327,7 @@ test "basic identifier parsing" {
         else => unreachable,
     };
 
-    try testIdentifier(&expression_statement.expression.?, "foobar");
+    try testIdentifier(&expression_statement.expression, "foobar");
 }
 
 test "basic int parsing" {
@@ -334,7 +347,7 @@ test "basic int parsing" {
         else => unreachable,
     };
 
-    try testIntegerLiteral(&expression_statement.expression.?, 5);
+    try testIntegerLiteral(&expression_statement.expression, 5);
 }
 
 test "basic boolean parsing" {
@@ -366,7 +379,7 @@ test "basic boolean parsing" {
             else => unreachable,
         };
 
-        try testBooleanLiteral(&expression_statement.expression.?, case.expected);
+        try testBooleanLiteral(&expression_statement.expression, case.expected);
     }
 }
 
@@ -428,7 +441,7 @@ test "parse prefix expressions" {
 
         const parsed_statement = program.statements.items[0].expression;
 
-        switch (parsed_statement.expression.?) {
+        switch (parsed_statement.expression) {
             .prefix_expression => {},
             else => {
                 std.debug.print("Expected a prefix expression. Got something else.", .{});
@@ -436,8 +449,8 @@ test "parse prefix expressions" {
             },
         }
 
-        const prefix_expression = parsed_statement.expression.?.prefix_expression;
-        const right_expression = prefix_expression.right.expression.?;
+        const prefix_expression = parsed_statement.expression.prefix_expression;
+        const right_expression = prefix_expression.right.expression;
 
         try testing.expectEqualStrings(case.operator, prefix_expression.operator);
         try testLiteralExpression(&right_expression, case.value);
@@ -674,7 +687,7 @@ test "parse infix expressions" {
             },
         };
 
-        try testInfixExpression(&statement.expression.?, case.leftValue, case.operator, case.rightValue);
+        try testInfixExpression(&statement.expression, case.leftValue, case.operator, case.rightValue);
     }
 }
 
@@ -700,7 +713,7 @@ test "parsing if expression" {
         },
     };
 
-    const if_expression = switch (expression.expression.?) {
+    const if_expression = switch (expression.expression) {
         .if_expression => |val| val,
         else => {
             std.debug.print("Expected if expression. Got something else.", .{});
@@ -708,7 +721,7 @@ test "parsing if expression" {
         },
     };
 
-    try testInfixExpression(&if_expression.condition.expression.?, .{ .string = "x" }, "<", .{ .string = "y" });
+    try testInfixExpression(&if_expression.condition.expression, .{ .string = "x" }, "<", .{ .string = "y" });
 
     try testing.expectEqual(1, if_expression.consequence.statements.items.len);
 
@@ -720,7 +733,7 @@ test "parsing if expression" {
         },
     };
 
-    try testIdentifier(&consequence_expression.expression.?, "x");
+    try testIdentifier(&consequence_expression.expression, "x");
 
     try testing.expect(null == if_expression.alternative);
 }
@@ -747,7 +760,7 @@ test "parsing if else expression" {
         },
     };
 
-    const if_expression = switch (expression.expression.?) {
+    const if_expression = switch (expression.expression) {
         .if_expression => |val| val,
         else => {
             std.debug.print("Expected if expression. Got something else.", .{});
@@ -755,7 +768,7 @@ test "parsing if else expression" {
         },
     };
 
-    try testInfixExpression(&if_expression.condition.expression.?, .{ .string = "x" }, "<", .{ .string = "y" });
+    try testInfixExpression(&if_expression.condition.expression, .{ .string = "x" }, "<", .{ .string = "y" });
 
     try testing.expectEqual(1, if_expression.consequence.statements.items.len);
 
@@ -767,7 +780,7 @@ test "parsing if else expression" {
         },
     };
 
-    try testIdentifier(&consequence_expression.expression.?, "x");
+    try testIdentifier(&consequence_expression.expression, "x");
 
     const alternative = if_expression.alternative.?;
 
@@ -781,7 +794,7 @@ test "parsing if else expression" {
         },
     };
 
-    try testIdentifier(&alternative_expression.expression.?, "y");
+    try testIdentifier(&alternative_expression.expression, "y");
 }
 
 test "paring function literals" {
@@ -806,7 +819,7 @@ test "paring function literals" {
         },
     };
 
-    const fn_expression = switch (expression.expression.?) {
+    const fn_expression = switch (expression.expression) {
         .function_literal => |val| val,
         else => {
             std.debug.print("Expected if expression. Got something else.", .{});
@@ -829,7 +842,7 @@ test "paring function literals" {
         },
     };
 
-    try testInfixExpression(&body_expression.expression.?, .{ .string = "x" }, "+", .{ .string = "y" });
+    try testInfixExpression(&body_expression.expression, .{ .string = "x" }, "+", .{ .string = "y" });
 }
 
 test "function parameter parsing" {
@@ -858,7 +871,7 @@ test "function parameter parsing" {
             else => return error.TestUnexpectedResult,
         };
 
-        const fn_expression = switch (expression.expression.?) {
+        const fn_expression = switch (expression.expression) {
             .function_literal => |val| val,
             else => return error.TestUnexpectedResult,
         };
@@ -893,7 +906,7 @@ test "parsing call expression" {
         },
     };
 
-    const call_exp = switch (expression.expression.?) {
+    const call_exp = switch (expression.expression) {
         .call_expression => |val| val,
         else => {
             std.debug.print("Expected call expression. Got something else.", .{});
@@ -901,11 +914,11 @@ test "parsing call expression" {
         },
     };
 
-    try testIdentifier(&call_exp.function.expression.?, "add");
+    try testIdentifier(&call_exp.function.expression, "add");
 
     try testing.expectEqual(3, call_exp.arguments.len);
 
-    try testLiteralExpression(&call_exp.arguments[0].expression.?, .{ .integer = 1 });
-    try testInfixExpression(&call_exp.arguments[1].expression.?, .{ .integer = 2 }, "*", .{ .integer = 3 });
-    try testInfixExpression(&call_exp.arguments[2].expression.?, .{ .integer = 4 }, "+", .{ .integer = 5 });
+    try testLiteralExpression(&call_exp.arguments[0].expression, .{ .integer = 1 });
+    try testInfixExpression(&call_exp.arguments[1].expression, .{ .integer = 2 }, "*", .{ .integer = 3 });
+    try testInfixExpression(&call_exp.arguments[2].expression, .{ .integer = 4 }, "+", .{ .integer = 5 });
 }
