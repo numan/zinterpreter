@@ -114,8 +114,7 @@ pub const Evaluator = struct {
 
         const value = switch (value_result) {
             .value => |value| value,
-            .return_value => |value| return wrapResult(.return_value, value),
-            .err => |value| return wrapResult(.err, value),
+            else => return value_result,
         };
 
         _ = try self.environment.set(let_statement.name.token.ch, value);
@@ -152,8 +151,7 @@ pub const Evaluator = struct {
                 const right_result = try self.evalExpression(&prefix_expression.*.right.expression);
                 const right = switch (right_result) {
                     .value => |value| value,
-                    .return_value => |value| return wrapResult(.return_value, value),
-                    .err => |value| return wrapResult(.err, value),
+                    else => return right_result,
                 };
 
                 const evaluated = try self.evalPrefixExpression(prefix_expression, right);
@@ -166,15 +164,13 @@ pub const Evaluator = struct {
                 const left_result = try self.evalExpression(&infix_expression.*.left.expression);
                 const left = switch (left_result) {
                     .value => |value| value,
-                    .return_value => |value| return wrapResult(.return_value, value),
-                    .err => |value| return wrapResult(.err, value),
+                    else => return left_result,
                 };
 
                 const right_result = try self.evalExpression(&infix_expression.*.right.expression);
                 const right = switch (right_result) {
                     .value => |value| value,
-                    .return_value => |value| return wrapResult(.return_value, value),
-                    .err => |value| return wrapResult(.err, value),
+                    else => return right_result,
                 };
 
                 const evaluated = try self.evalInfixExpression(infix_expression, &left, &right);
@@ -191,8 +187,7 @@ pub const Evaluator = struct {
         const function_result = try self.evalExpression(&call_expression.function.expression);
         const function = switch (function_result) {
             .value => |value| value,
-            .return_value => |value| return wrapResult(.return_value, value),
-            .err => |value| return wrapResult(.err, value),
+            else => return function_result,
         };
 
         switch (function) {
@@ -207,8 +202,7 @@ pub const Evaluator = struct {
             const argument_result = try self.evalExpression(&argument.expression);
             const evaluated_argument = switch (argument_result) {
                 .value => |value| value,
-                .return_value => |value| return wrapResult(.return_value, value),
-                .err => |value| return wrapResult(.err, value),
+                else => return argument_result,
             };
 
             switch (evaluated_argument) {
@@ -348,8 +342,7 @@ pub const Evaluator = struct {
         const condition_result = try self.evalNode(expression.condition);
         const condition = switch (condition_result) {
             .value => |value| value,
-            .return_value => |value| return wrapResult(.return_value, value),
-            .err => |value| return wrapResult(.err, value),
+            else => return condition_result,
         };
 
         if (isTruthy(condition)) {
