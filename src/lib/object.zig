@@ -1,10 +1,13 @@
 const std = @import("std");
+const ast = @import("ast.zig");
+const environment = @import("environment.zig");
 
 pub const Object = union(enum) {
     int: Integer,
     bool: Boolean,
     null: Null,
     err: Error,
+    function: Function,
 
     const Self = @This();
     pub const Error = struct {
@@ -60,6 +63,35 @@ pub const Object = union(enum) {
         pub fn inspect(self: *const Object.Null, writer: *std.Io.Writer) !void {
             _ = self;
             try writer.writeAll("null");
+            try writer.flush();
+        }
+    };
+
+    pub const Function = struct {
+        parameters: []const ast.Identifier,
+        body: *const ast.StatementType.BlockStatement,
+        environment: *environment.Environment,
+
+        pub fn init(parameters: []const ast.Identifier, body: *const ast.StatementType.BlockStatement, env: *environment.Environment) Function {
+            return .{
+                .parameters = parameters,
+                .body = body,
+                .environment = env,
+            };
+        }
+
+        pub fn inspect(self: *const Object.Function, writer: *std.Io.Writer) !void {
+            try writer.writeAll("fn(");
+            for (self.parameters, 0..) |parameter, i| {
+                try parameter.toString(writer);
+                if (i < self.parameters.len - 1) {
+                    try writer.writeAll(", ");
+                }
+            }
+
+            try writer.writeAll(") {");
+            try self.body.toString(writer);
+            try writer.writeAll("}");
             try writer.flush();
         }
     };

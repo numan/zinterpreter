@@ -371,6 +371,7 @@ pub const Identifier = struct {
 
     pub fn toString(self: *const Identifier, writer: *std.Io.Writer) !void {
         try writer.print("{s}", .{self.value});
+        try writer.flush();
     }
 
     pub fn tokenLiteral(self: *const Identifier) []const u8 {

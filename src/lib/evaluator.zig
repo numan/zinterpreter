@@ -12,7 +12,7 @@ const Object = object.Object;
 const Environment = environment.Environment;
 
 pub const Evaluator = struct {
-    arena: std.heap.ArenaAllocator,
+    allocator: std.mem.Allocator,
     environment: *Environment,
 
     const Self = @This();
@@ -32,17 +32,9 @@ pub const Evaluator = struct {
 
     pub fn init(allocator: std.mem.Allocator, env: *Environment) Self {
         return .{
-            .arena = std.heap.ArenaAllocator.init(allocator),
+            .allocator = allocator,
             .environment = env,
         };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.arena.deinit();
-    }
-
-    pub fn reset(self: *Self) void {
-        _ = self.arena.reset(.retain_capacity);
     }
 
     pub fn eval(self: *Self, node: anytype) EvalError!Object {
@@ -76,7 +68,7 @@ pub const Evaluator = struct {
     }
 
     fn errorMsg(self: *Self, comptime format: []const u8, args: anytype) EvalError![]const u8 {
-        return try std.fmt.allocPrint(self.arena.allocator(), format, args);
+        return try std.fmt.allocPrint(self.allocator, format, args);
     }
 
     fn errorObj(self: *Self, comptime format: []const u8, args: anytype) EvalError!Object {
@@ -149,6 +141,9 @@ pub const Evaluator = struct {
         return switch (expression.*) {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
+            }),
+            .function_literal => |*function_literal| wrapResult(.value, .{
+                .function = Object.Function.init(function_literal.parameters, &function_literal.body, self.environment),
             }),
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),

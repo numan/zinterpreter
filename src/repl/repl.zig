@@ -28,22 +28,22 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
-    var env = Environment.init(allocator);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var env = Environment.init(arena.allocator());
     defer env.deinit();
 
-    var evaluator = Evaluator.init(allocator, &env);
-    defer evaluator.deinit();
+    var evaluator = Evaluator.init(arena.allocator(), &env);
 
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();
 
     while (stdin.takeDelimiterExclusive('\n')) |line| {
-        defer evaluator.reset();
         stdin.toss(1);
 
         var lexer = Lexer.init(line);
-        var parser = Parser.init(allocator, &lexer);
-        defer parser.deinit();
+        var parser = Parser.init(arena.allocator(), &lexer);
 
         const program = try parser.parse();
         const errors = parser.allErrors();
