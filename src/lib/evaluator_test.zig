@@ -570,3 +570,70 @@ test "function application" {
         };
     }
 }
+
+test "closures" {
+    const input =
+        \\let newAdder = fn(x) {
+        \\  fn(y) { x + y };
+        \\};
+        \\
+        \\let addTwo = newAdder(2);
+        \\addTwo(2);
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var env = Environment.init(arena.allocator());
+    defer env.deinit();
+
+    var evaluator = Evaluator.init(arena.allocator(), &env);
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testIntegerObjectEqual(evaluated, 4);
+}
+
+test "function as argument" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{
+            .input =
+            \\let add = fn(a, b) { a + b };
+            \\let sub = fn(a, b) { a - b };
+            \\let applyFunc = fn(a, b, func) { func(a, b) };
+            \\applyFunc(2, 2, add);
+            ,
+            .expected = 4,
+        },
+        .{
+            .input =
+            \\let add = fn(a, b) { a + b };
+            \\let sub = fn(a, b) { a - b };
+            \\let applyFunc = fn(a, b, func) { func(a, b) };
+            \\applyFunc(10, 2, sub);
+            ,
+            .expected = 8,
+        },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var env = Environment.init(arena.allocator());
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(arena.allocator(), &env);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input:\n{s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
