@@ -537,3 +537,36 @@ test "function object" {
     try function.body.toString(&body_writer.writer);
     try testing.expectEqualStrings("(x + 2)", body_writer.written());
 }
+
+test "function application" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "let identity = fn(x) { x; }; identity(5);", .expected = 5 },
+        .{ .input = "let identity = fn(x) { return x; }; identity(5);", .expected = 5 },
+        .{ .input = "let double = fn(x) { x * 2; }; double(5);", .expected = 10 },
+        .{ .input = "let add = fn(x, y) { x + y; }; add(5, 5);", .expected = 10 },
+        .{ .input = "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", .expected = 20 },
+        .{ .input = "fn(x) { x; }(5)", .expected = 5 },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var env = Environment.init(arena.allocator());
+        defer env.deinit();
+
+        var evaluator = Evaluator.init(arena.allocator(), &env);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input:\n{s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}

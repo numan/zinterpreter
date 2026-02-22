@@ -145,6 +145,7 @@ pub const Evaluator = struct {
             .function_literal => |*function_literal| wrapResult(.value, .{
                 .function = Object.Function.init(function_literal.parameters, &function_literal.body, self.environment),
             }),
+            .call_expression => |*call_expression| try self.evalCallExpression(call_expression),
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
             .prefix_expression => |*prefix_expression| {
@@ -183,7 +184,73 @@ pub const Evaluator = struct {
                 };
             },
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
-            else => wrapResult(.err, try self.errorObj("unsupported expression type: {s}", .{@tagName(expression.*)})),
+        };
+    }
+
+    fn evalCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) EvalError!EvalResult {
+        const function_result = try self.evalExpression(&call_expression.function.expression);
+        const function = switch (function_result) {
+            .value => |value| value,
+            .return_value => |value| return wrapResult(.return_value, value),
+            .err => |value| return wrapResult(.err, value),
+        };
+
+        switch (function) {
+            .err => return wrapResult(.err, function),
+            else => {},
+        }
+
+        const arguments = try self.allocator.alloc(Object, call_expression.arguments.len);
+        defer self.allocator.free(arguments);
+
+        for (call_expression.arguments, 0..) |*argument, i| {
+            const argument_result = try self.evalExpression(&argument.expression);
+            const evaluated_argument = switch (argument_result) {
+                .value => |value| value,
+                .return_value => |value| return wrapResult(.return_value, value),
+                .err => |value| return wrapResult(.err, value),
+            };
+
+            switch (evaluated_argument) {
+                .err => return wrapResult(.err, evaluated_argument),
+                else => {},
+            }
+
+            arguments[i] = evaluated_argument;
+        }
+
+        const evaluated = try self.applyFunction(function, arguments);
+        return switch (evaluated) {
+            .err => wrapResult(.err, evaluated),
+            else => wrapResult(.value, evaluated),
+        };
+    }
+
+    fn applyFunction(self: *Self, func: Object, args: []const Object) EvalError!Object {
+        return switch (func) {
+            .function => |function| {
+                if (args.len != function.parameters.len) {
+                    return try self.errorObj(
+                        "wrong number of arguments: want={d}, got={d}",
+                        .{ function.parameters.len, args.len },
+                    );
+                }
+
+                const previous_env = self.environment;
+                const extended_environment = try self.allocator.create(Environment);
+                extended_environment.* = Environment.initEnclosed(self.allocator, function.environment);
+
+                for (function.parameters, 0..) |parameter, i| {
+                    _ = try extended_environment.set(parameter.value, args[i]);
+                }
+
+                self.environment = extended_environment;
+                defer self.environment = previous_env;
+
+                const evaluated = try self.evalBlockStatement(function.body);
+                return unwrapEvalResult(evaluated);
+            },
+            else => try self.errorObj("not a function: {s}", .{func.typeName()}),
         };
     }
 
