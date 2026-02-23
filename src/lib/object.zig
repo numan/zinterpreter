@@ -6,15 +6,16 @@ pub const Object = union(enum) {
     int: Integer,
     bool: Boolean,
     null: Null,
-    err: Error,
-    function: Function,
+    err: *Error,
+    function: *Function,
 
     const Self = @This();
     pub const Error = struct {
         msg: []const u8,
+        marked: bool = false,
 
         pub fn init(m: []const u8) Error {
-            return .{ .msg = m };
+            return .{ .msg = m, .marked = false };
         }
 
         pub fn inspect(self: *const Object.Error, writer: *std.Io.Writer) !void {
@@ -71,12 +72,14 @@ pub const Object = union(enum) {
         parameters: []const ast.Identifier,
         body: *const ast.StatementType.BlockStatement,
         environment: *environment.Environment,
+        marked: bool = false,
 
         pub fn init(parameters: []const ast.Identifier, body: *const ast.StatementType.BlockStatement, env: *environment.Environment) Function {
             return .{
                 .parameters = parameters,
                 .body = body,
                 .environment = env,
+                .marked = false,
             };
         }
 
@@ -102,8 +105,8 @@ pub const Object = union(enum) {
 
     pub fn inspect(self: *const Self, writer: *std.Io.Writer) !void {
         switch (self.*) {
-            inline else => |*obj| {
-                try obj.*.inspect(writer);
+            inline else => |obj| {
+                try obj.inspect(writer);
             },
         }
     }

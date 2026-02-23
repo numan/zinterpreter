@@ -3,6 +3,7 @@ const std = @import("std");
 const ast = @import("ast.zig");
 const object = @import("object.zig");
 const environment = @import("environment.zig");
+const gc = @import("gc.zig");
 
 const ExpressionType = ast.ExpressionType;
 const Program = ast.Program;
@@ -10,10 +11,12 @@ const Identifier = ast.Identifier;
 const StatementType = ast.StatementType;
 const Object = object.Object;
 const Environment = environment.Environment;
+const Gc = gc.Gc;
 
 pub const Evaluator = struct {
     allocator: std.mem.Allocator,
     environment: *Environment,
+    gc: ?*Gc = null,
 
     const Self = @This();
     const EvalError = error{OutOfMemory};
@@ -34,6 +37,15 @@ pub const Evaluator = struct {
         return .{
             .allocator = allocator,
             .environment = env,
+            .gc = null,
+        };
+    }
+
+    pub fn initWithGc(allocator: std.mem.Allocator, env: *Environment, collector: *Gc) Self {
+        return .{
+            .allocator = allocator,
+            .environment = env,
+            .gc = collector,
         };
     }
 
@@ -67,14 +79,16 @@ pub const Evaluator = struct {
         };
     }
 
-    fn errorMsg(self: *Self, comptime format: []const u8, args: anytype) EvalError![]const u8 {
-        return try std.fmt.allocPrint(self.allocator, format, args);
-    }
-
     fn errorObj(self: *Self, comptime format: []const u8, args: anytype) EvalError!Object {
-        return .{
-            .err = Object.Error.init(try self.errorMsg(format, args)),
-        };
+        if (self.gc) |collector| {
+            const msg = try std.fmt.allocPrint(collector.allocator, format, args);
+            return try collector.allocErrorOwned(msg);
+        }
+
+        const msg = try std.fmt.allocPrint(self.allocator, format, args);
+        const err_obj = try self.allocator.create(Object.Error);
+        err_obj.* = Object.Error.init(msg);
+        return .{ .err = err_obj };
     }
 
     fn evalProgram(self: *Self, program: *const Program) EvalError!EvalResult {
@@ -141,9 +155,23 @@ pub const Evaluator = struct {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
             }),
-            .function_literal => |*function_literal| wrapResult(.value, .{
-                .function = Object.Function.init(function_literal.parameters, &function_literal.body, self.environment),
-            }),
+            .function_literal => |*function_literal| {
+                const function_obj = Object.Function.init(
+                    function_literal.parameters,
+                    &function_literal.body,
+                    self.environment,
+                );
+
+                const allocated_function = if (self.gc) |collector|
+                    try collector.allocFunction(function_obj)
+                else blk: {
+                    const ptr = try self.allocator.create(Object.Function);
+                    ptr.* = function_obj;
+                    break :blk Object{ .function = ptr };
+                };
+
+                return wrapResult(.value, allocated_function);
+            },
             .call_expression => |*call_expression| try self.evalCallExpression(call_expression),
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
@@ -231,8 +259,13 @@ pub const Evaluator = struct {
                 }
 
                 const previous_env = self.environment;
-                const extended_environment = try self.allocator.create(Environment);
-                extended_environment.* = Environment.initEnclosed(self.allocator, function.environment);
+                const extended_environment = if (self.gc) |collector|
+                    try collector.allocEnvironment(function.environment)
+                else blk: {
+                    const environment_ptr = try self.allocator.create(Environment);
+                    environment_ptr.* = Environment.initEnclosed(self.allocator, function.environment);
+                    break :blk environment_ptr;
+                };
 
                 for (function.parameters, 0..) |parameter, i| {
                     _ = try extended_environment.set(parameter.value, args[i]);

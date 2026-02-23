@@ -2,7 +2,7 @@ const std = @import("std");
 const Lexer = @import("../lib/lexer.zig").Lexer;
 const Parser = @import("../lib/parser.zig").Parser;
 const Evaluator = @import("../lib/evaluator.zig").Evaluator;
-const Environment = @import("../lib/environment.zig").Environment;
+const Gc = @import("../lib/gc.zig").Gc;
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -31,10 +31,12 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var env = Environment.init(arena.allocator());
-    defer env.deinit();
+    var collector = Gc.init(allocator);
+    defer collector.deinit();
 
-    var evaluator = Evaluator.init(arena.allocator(), &env);
+    const env = try collector.allocEnvironment(null);
+
+    var evaluator = Evaluator.initWithGc(arena.allocator(), env, &collector);
 
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();
@@ -56,6 +58,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
         const eval = try evaluator.eval(program);
         try eval.inspect(stdout);
         try stdout.writeAll("\n");
+        collector.collect(env);
 
         try stdout.print("{s} ", .{PROMPT});
 

@@ -13,10 +13,12 @@ comptime {
     _ = @import("lib/parser.zig");
     _ = @import("lib/object.zig");
     _ = @import("lib/evaluator.zig");
+    _ = @import("lib/gc.zig");
 }
 
 // All the tests go here
 comptime {
     _ = @import("lib/parser_test.zig");
     _ = @import("lib/evaluator_test.zig");
+    _ = @import("lib/gc_test.zig");
 }

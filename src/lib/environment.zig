@@ -7,7 +7,8 @@ const StorageHashMap = std.StringHashMap(Object);
 pub const Environment = struct {
     allocator: std.mem.Allocator,
     storage: StorageHashMap,
-    outer: ?*const Environment,
+    outer: ?*Environment,
+    marked: bool = false,
 
     const Self = @This();
 
@@ -16,16 +17,21 @@ pub const Environment = struct {
             .allocator = allocator,
             .storage = StorageHashMap.init(allocator),
             .outer = null,
+            .marked = false,
         };
     }
 
-    pub fn initEnclosed(allocator: std.mem.Allocator, outer: *const Environment) Environment {
+    pub fn initEnclosed(allocator: std.mem.Allocator, outer: *Environment) Environment {
         var env = Environment.init(allocator);
         env.outer = outer;
         return env;
     }
 
     pub fn deinit(self: *Self) void {
+        var iterator = self.storage.iterator();
+        while (iterator.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
         self.storage.deinit();
     }
 
@@ -42,7 +48,13 @@ pub const Environment = struct {
     }
 
     pub fn set(self: *Self, key: []const u8, value: Object) !Object {
-        try self.storage.put(key, value);
+        if (self.storage.getPtr(key)) |existing_value| {
+            existing_value.* = value;
+            return value;
+        }
+
+        const owned_key = try self.allocator.dupe(u8, key);
+        try self.storage.put(owned_key, value);
         return value;
     }
 };
