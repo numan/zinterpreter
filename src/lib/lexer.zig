@@ -85,6 +85,30 @@ pub const Lexer = struct {
         return std.ascii.isDigit(ch);
     }
 
+    fn readString(self: *Self) Token {
+        self.readCharacter(); // Skip the opening quote
+        const start = self.position;
+        var escaped = false;
+
+        while (self.ch != null) {
+            const ch = self.ch.?;
+
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                const value = self.input[start..self.position];
+                self.readCharacter(); // Skip the closing quote
+                return Token.init(TokenType.string, value);
+            }
+
+            self.readCharacter();
+        }
+
+        return Token.init(TokenType.illegal, "Unterminated string literal");
+    }
+
     pub fn nextToken(self: *Self) Token {
         self.skipWhitespace();
 
@@ -95,7 +119,9 @@ pub const Lexer = struct {
         const ch = self.ch.?;
         const ch_slice = self.input[self.position .. self.position + 1];
 
-        if (Lexer.isLetter(ch)) {
+        if (std.mem.eql(u8, ch_slice, "\"")) {
+            return self.readString();
+        } else if (Lexer.isLetter(ch)) {
             const nextTokenSlice = self.readIdentifier() catch @panic("Encountered an unexpected error while trying to read an identifier");
 
             const matching_keyword = Token.fromString(nextTokenSlice);
@@ -150,6 +176,8 @@ test "read tokens" {
         \\ }
         \\ 10 == 10;
         \\ 10 != 9;
+        \\ "foo bar"
+        \\ "foobar"
     ;
 
     const tests = [_]struct { TokenType, []const u8 }{
@@ -226,6 +254,31 @@ test "read tokens" {
         .{ TokenType.not_eq, "!=" },
         .{ TokenType.int, "9" },
         .{ TokenType.semicolon, ";" },
+        .{ TokenType.string, "foo bar" },
+        .{ TokenType.string, "foobar" },
+        .{ TokenType.eof, "eof" },
+    };
+
+    var lexer = Lexer.init(input);
+
+    for (tests) |expected_output| {
+        const tkn = lexer.nextToken();
+        try testing.expectEqual(expected_output[0], tkn.token_type);
+        try testing.expectEqualStrings(expected_output[1], tkn.ch);
+    }
+}
+
+test "read escaped string tokens" {
+    const input =
+        \\ "hello \"world\""
+        \\ "hello\n world"
+        \\ "hello\t\t\tworld"
+    ;
+
+    const tests = [_]struct { TokenType, []const u8 }{
+        .{ TokenType.string, "hello \\\"world\\\"" },
+        .{ TokenType.string, "hello\\n world" },
+        .{ TokenType.string, "hello\\t\\t\\tworld" },
         .{ TokenType.eof, "eof" },
     };
 

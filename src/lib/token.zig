@@ -7,6 +7,7 @@ pub const TokenType = enum {
     // Identifiers + literals
     iden,
     int,
+    string,
     //operators
     assign,
     plus,
@@ -60,6 +61,7 @@ pub const TokenType = enum {
         .{ "if", .@"if" },
         .{ "else", .@"else" },
         .{ "return", .@"return" },
+        .{ "\"", .string },
     };
 
     const TMapType = StaticStringMap(TokenType);
