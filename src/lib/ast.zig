@@ -93,6 +93,7 @@ pub const ExpressionType = union(enum) {
     infix_expression: InfixExpression,
     if_expression: IfExpression,
     call_expression: CallExpression,
+    string_literal: StringLiteral,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -100,6 +101,15 @@ pub const ExpressionType = union(enum) {
                 try val.toString(writer);
             },
         }
+    }
+
+    pub fn initStringLiteral(tkn: Token, value: []const u8) ExpressionType {
+        return .{
+            .string_literal = .{
+                .token = tkn,
+                .value = value,
+            },
+        };
     }
 
     pub fn initIfExpression(tkn: Token, condition: *StatementType.ExpressionStatement, consequence: StatementType.BlockStatement, alternative: ?StatementType.BlockStatement) ExpressionType {
@@ -154,6 +164,29 @@ pub const ExpressionType = union(enum) {
             .call_expression = CallExpression.init(tkn, function, arguments),
         };
     }
+
+    pub const StringLiteral = struct {
+        token: Token,
+        value: []const u8,
+
+        const Self = @This();
+
+        pub fn init(tkn: Token, value: []const u8) Self {
+            return .{
+                .token = tkn,
+                .value = value,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            try writer.print("{s}", .{self.value});
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 
     pub const FunctionLiteral = struct {
         token: Token,
@@ -441,6 +474,12 @@ pub const StatementType = union(enum) {
         expression: ExpressionType,
 
         const Self = @This();
+
+        pub fn initStringLiteral(tkn: Token, value: []const u8) Self {
+            return .{
+                .expression = ExpressionType.initStringLiteral(tkn, value),
+            };
+        }
 
         pub fn initFunctionLiteral(tkn: Token, params: []Identifier, body: StatementType.BlockStatement) Self {
             return .{

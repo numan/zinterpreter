@@ -8,6 +8,7 @@ pub const Object = union(enum) {
     null: Null,
     err: *Error,
     function: *Function,
+    string: String,
 
     const Self = @This();
     pub const Error = struct {
@@ -21,6 +22,21 @@ pub const Object = union(enum) {
         pub fn inspect(self: *const Object.Error, writer: *std.Io.Writer) !void {
             try writer.writeAll("ERROR: ");
             try writer.writeAll(self.msg);
+            try writer.flush();
+        }
+    };
+
+    pub const String = struct {
+        value: []const u8,
+
+        pub fn init(value: []const u8) String {
+            return String{
+                .value = value,
+            };
+        }
+
+        pub fn inspect(self: *const Object.String, writer: *std.Io.Writer) !void {
+            try writer.writeAll(self.value);
             try writer.flush();
         }
     };

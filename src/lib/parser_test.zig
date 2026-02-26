@@ -36,6 +36,18 @@ fn testBooleanLiteral(val: *const ast.ExpressionType, literal_value: bool) !void
     }
 }
 
+fn testStringLiteral(val: *const ast.ExpressionType, literal_value: []const u8) !void {
+    switch (val.*) {
+        .string_literal => |exp| {
+            try testing.expectEqualStrings(literal_value, exp.value);
+        },
+        else => {
+            std.debug.print("Expected a string literal. Got something else", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
 const ExpectedValue = union(enum) {
     integer: i64,
     string: []const u8,
@@ -57,7 +69,16 @@ fn testIdentifier(val: *const ast.ExpressionType, literal_value: []const u8) !vo
 fn testLiteralExpression(exp: *const ast.ExpressionType, expected: ExpectedValue) !void {
     switch (expected) {
         .integer => |val| try testIntegerLiteral(exp, val),
-        .string => |val| try testIdentifier(exp, val),
+        .string => |val| {
+            return switch (exp.*) {
+                .identifier => |e| try testing.expectEqualStrings(val, e.value),
+                .string_literal => |e| try testing.expectEqualStrings(val, e.value),
+                else => {
+                    std.debug.print("Expected identifier or string literal. Got something else", .{});
+                    return error.TestUnexpectedResult;
+                },
+            };
+        },
         .boolean => |val| try testBooleanLiteral(exp, val),
     }
 }
@@ -348,6 +369,31 @@ test "basic int parsing" {
     };
 
     try testIntegerLiteral(&expression_statement.expression, 5);
+}
+
+test "parse string literal expression" {
+    const input = "\"hello world\";";
+
+    const allocator = std.testing.allocator;
+
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const stmt = switch (program.statements.items[0]) {
+        .expression => |value| value,
+        else => {
+            std.debug.print("Expected an expression statement. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testStringLiteral(&stmt.expression, "hello world");
 }
 
 test "basic boolean parsing" {

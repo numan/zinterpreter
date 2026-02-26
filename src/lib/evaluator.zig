@@ -208,6 +208,9 @@ pub const Evaluator = struct {
                 };
             },
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
+            .string_literal => |string_literal| wrapResult(.value, .{
+                .string = Object.String.init(string_literal.value),
+            }),
         };
     }
 

@@ -355,6 +355,10 @@ pub const Parser = struct {
         return try list.toOwnedSlice(self.allocator);
     }
 
+    pub fn parseStringLiteral(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        return ast.StatementType.ExpressionStatement.initStringLiteral(self.current_token, self.current_token.ch);
+    }
+
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
         _ = self;
         return switch (token_type) {
@@ -385,6 +389,7 @@ pub const Parser = struct {
             .function => Self.parseFunctionLiteral,
             inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
+            .string => Self.parseStringLiteral,
             else => null,
         };
     }

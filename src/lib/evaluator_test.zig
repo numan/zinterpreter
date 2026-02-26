@@ -41,6 +41,18 @@ fn testBooleanObjectEqual(obj: Object, expected: bool) !void {
     try testing.expectEqual(expected, boolean.value);
 }
 
+fn testStringObjectEqual(obj: Object, expected: []const u8) !void {
+    const str = switch (obj) {
+        .string => |value| value,
+        else => {
+            std.debug.print("Expected a string. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqualStrings(expected, str.value);
+}
+
 fn testErrorObjectMessageEqual(obj: Object, expected: []const u8) !void {
     switch (obj) {
         .err => |err_obj| {
@@ -636,4 +648,19 @@ test "function as argument" {
             return err;
         };
     }
+}
+
+test "string literal" {
+    const input = "\"Hello World!\"";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var env = Environment.init(arena.allocator());
+    defer env.deinit();
+
+    var evaluator = Evaluator.init(arena.allocator(), &env);
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testStringObjectEqual(evaluated, "Hello World!");
 }
