@@ -4,6 +4,7 @@ const testing = std.testing;
 const Object = @import("./object.zig").Object;
 const Evaluator = @import("./evaluator.zig").Evaluator;
 const Environment = @import("./environment.zig").Environment;
+const Gc = @import("./gc.zig").Gc;
 const Lexer = @import("./lexer.zig").Lexer;
 const Parser = @import("./parser.zig").Parser;
 
@@ -73,6 +74,8 @@ fn testEval(input: []const u8, allocator: std.mem.Allocator, evaluator: *Evaluat
     var parser = Parser.init(allocator, &lexer);
 
     const program = try parser.parse();
+    defer parser.deinit();
+
     return evaluator.eval(program);
 }
 
@@ -151,10 +154,11 @@ test "eval integer expression" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -254,10 +258,11 @@ test "eval boolean" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
@@ -299,10 +304,11 @@ test "bang operator" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
@@ -348,10 +354,11 @@ test "if else expressions" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         if (case.expected) |expected| {
@@ -389,10 +396,11 @@ test "return statements" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
@@ -410,10 +418,11 @@ test "bare return statements" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(input, arena.allocator(), &evaluator);
         try testNullObject(evaluated);
@@ -471,10 +480,11 @@ test "error handling" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
@@ -502,10 +512,11 @@ test "let statements" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
@@ -518,10 +529,11 @@ test "function object" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var env = Environment.init(arena.allocator());
-    defer env.deinit();
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
 
-    var evaluator = Evaluator.init(arena.allocator(), &env);
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
 
@@ -567,10 +579,11 @@ test "function application" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -596,10 +609,11 @@ test "closures" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var env = Environment.init(arena.allocator());
-    defer env.deinit();
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
 
-    var evaluator = Evaluator.init(arena.allocator(), &env);
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testIntegerObjectEqual(evaluated, 4);
@@ -634,10 +648,11 @@ test "function as argument" {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
 
-        var env = Environment.init(arena.allocator());
-        defer env.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
 
-        var evaluator = Evaluator.init(arena.allocator(), &env);
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -656,10 +671,11 @@ test "string literal" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var env = Environment.init(arena.allocator());
-    defer env.deinit();
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
 
-    var evaluator = Evaluator.init(arena.allocator(), &env);
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testStringObjectEqual(evaluated, "Hello World!");

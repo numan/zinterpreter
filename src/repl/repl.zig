@@ -28,15 +28,12 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
     var collector = Gc.init(allocator);
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
 
-    var evaluator = Evaluator.initWithGc(arena.allocator(), env, &collector);
+    var evaluator = Evaluator.init(env, &collector);
 
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();
@@ -44,8 +41,11 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     while (stdin.takeDelimiterExclusive('\n')) |line| {
         stdin.toss(1);
 
+        var parser_arena = std.heap.ArenaAllocator.init(allocator);
+        defer parser_arena.deinit();
+
         var lexer = Lexer.init(line);
-        var parser = Parser.init(arena.allocator(), &lexer);
+        var parser = Parser.init(parser_arena.allocator(), &lexer);
 
         const program = try parser.parse();
         const errors = parser.allErrors();

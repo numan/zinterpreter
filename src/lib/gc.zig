@@ -10,6 +10,7 @@ pub const Gc = struct {
     environments: std.ArrayList(*Environment) = .{},
     errors: std.ArrayList(*Object.Error) = .{},
     functions: std.ArrayList(*Object.Function) = .{},
+    strings: std.ArrayList(*Object.String) = .{},
 
     const Self = @This();
 
@@ -19,6 +20,7 @@ pub const Gc = struct {
             .environments = .{},
             .errors = .{},
             .functions = .{},
+            .strings = .{},
         };
     }
 
@@ -29,7 +31,14 @@ pub const Gc = struct {
         }
         self.errors.deinit(self.allocator);
 
+        for (self.strings.items) |string_obj| {
+            self.allocator.free(string_obj.value);
+            self.allocator.destroy(string_obj);
+        }
+        self.strings.deinit(self.allocator);
+
         for (self.functions.items) |function_obj| {
+            function_obj.deinit();
             self.allocator.destroy(function_obj);
         }
         self.functions.deinit(self.allocator);
@@ -60,9 +69,20 @@ pub const Gc = struct {
 
     pub fn allocFunction(self: *Self, function_obj: Object.Function) !Object {
         const function_ptr = try self.allocator.create(Object.Function);
+        errdefer self.allocator.destroy(function_ptr);
         function_ptr.* = function_obj;
         try self.functions.append(self.allocator, function_ptr);
         return .{ .function = function_ptr };
+    }
+
+    pub fn allocString(self: *Self, value: []const u8) !Object {
+        const duped_value = try self.allocator.dupe(u8, value);
+        errdefer self.allocator.free(duped_value);
+        const string_ptr = try self.allocator.create(Object.String);
+        errdefer self.allocator.destroy(string_ptr);
+        string_ptr.* = .{ .value = duped_value, .marked = false };
+        try self.strings.append(self.allocator, string_ptr);
+        return .{ .string = string_ptr };
     }
 
     pub fn allocErrorOwned(self: *Self, msg: []const u8) !Object {
@@ -82,6 +102,10 @@ pub const Gc = struct {
 
     pub fn trackedFunctionCount(self: *const Self) usize {
         return self.functions.items.len;
+    }
+
+    pub fn trackedStringCount(self: *const Self) usize {
+        return self.strings.items.len;
     }
 
     fn isTracked(self: *const Self, env: *Environment) bool {
@@ -105,6 +129,15 @@ pub const Gc = struct {
     fn isTrackedFunction(self: *const Self, function_obj: *Object.Function) bool {
         for (self.functions.items) |tracked_function| {
             if (tracked_function == function_obj) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn isTrackedString(self: *const Self, string_obj: *Object.String) bool {
+        for (self.strings.items) |tracked_string| {
+            if (tracked_string == string_obj) {
                 return true;
             }
         }
@@ -135,6 +168,13 @@ pub const Gc = struct {
 
                 function_obj.marked = true;
                 self.markEnvironment(function_obj.environment);
+            },
+            .string => |string_obj| {
+                if (!self.isTrackedString(string_obj)) {
+                    return;
+                }
+
+                string_obj.marked = true;
             },
             else => {},
         }
@@ -176,10 +216,25 @@ pub const Gc = struct {
             error_index += 1;
         }
 
+        var string_index: usize = 0;
+        while (string_index < self.strings.items.len) {
+            const string_obj = self.strings.items[string_index];
+            if (!string_obj.marked) {
+                self.allocator.free(string_obj.value);
+                self.allocator.destroy(string_obj);
+                _ = self.strings.swapRemove(string_index);
+                continue;
+            }
+
+            string_obj.marked = false;
+            string_index += 1;
+        }
+
         var function_index: usize = 0;
         while (function_index < self.functions.items.len) {
             const function_obj = self.functions.items[function_index];
             if (!function_obj.marked) {
+                function_obj.deinit();
                 self.allocator.destroy(function_obj);
                 _ = self.functions.swapRemove(function_index);
                 continue;

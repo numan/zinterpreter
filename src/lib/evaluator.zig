@@ -14,9 +14,8 @@ const Environment = environment.Environment;
 const Gc = gc.Gc;
 
 pub const Evaluator = struct {
-    allocator: std.mem.Allocator,
     environment: *Environment,
-    gc: ?*Gc = null,
+    gc: *Gc,
 
     const Self = @This();
     const EvalError = error{OutOfMemory};
@@ -33,17 +32,8 @@ pub const Evaluator = struct {
 
     const EvalResultTag = std.meta.Tag(EvalResult);
 
-    pub fn init(allocator: std.mem.Allocator, env: *Environment) Self {
+    pub fn init(env: *Environment, collector: *Gc) Self {
         return .{
-            .allocator = allocator,
-            .environment = env,
-            .gc = null,
-        };
-    }
-
-    pub fn initWithGc(allocator: std.mem.Allocator, env: *Environment, collector: *Gc) Self {
-        return .{
-            .allocator = allocator,
             .environment = env,
             .gc = collector,
         };
@@ -80,15 +70,8 @@ pub const Evaluator = struct {
     }
 
     fn errorObj(self: *Self, comptime format: []const u8, args: anytype) EvalError!Object {
-        if (self.gc) |collector| {
-            const msg = try std.fmt.allocPrint(collector.allocator, format, args);
-            return try collector.allocErrorOwned(msg);
-        }
-
-        const msg = try std.fmt.allocPrint(self.allocator, format, args);
-        const err_obj = try self.allocator.create(Object.Error);
-        err_obj.* = Object.Error.init(msg);
-        return .{ .err = err_obj };
+        const msg = try std.fmt.allocPrint(self.gc.allocator, format, args);
+        return try self.gc.allocErrorOwned(msg);
     }
 
     fn evalProgram(self: *Self, program: *const Program) EvalError!EvalResult {
@@ -156,19 +139,24 @@ pub const Evaluator = struct {
                 .int = Object.Integer.init(integer_literal.value),
             }),
             .function_literal => |*function_literal| {
-                const function_obj = Object.Function.init(
-                    function_literal.parameters,
-                    &function_literal.body,
-                    self.environment,
-                );
+                var func_arena = std.heap.ArenaAllocator.init(self.gc.allocator);
+                errdefer func_arena.deinit();
+                const arena_alloc = func_arena.allocator();
 
-                const allocated_function = if (self.gc) |collector|
-                    try collector.allocFunction(function_obj)
-                else blk: {
-                    const ptr = try self.allocator.create(Object.Function);
-                    ptr.* = function_obj;
-                    break :blk Object{ .function = ptr };
-                };
+                const cloned_params = try arena_alloc.alloc(ast.Identifier, function_literal.parameters.len);
+                for (function_literal.parameters, 0..) |param, i| {
+                    cloned_params[i] = try param.clone(arena_alloc);
+                }
+
+                const cloned_body = try arena_alloc.create(ast.StatementType.BlockStatement);
+                cloned_body.* = try function_literal.body.clone(arena_alloc);
+
+                const allocated_function = try self.gc.allocFunction(Object.Function.init(
+                    cloned_params,
+                    cloned_body,
+                    self.environment,
+                    func_arena,
+                ));
 
                 return wrapResult(.value, allocated_function);
             },
@@ -208,9 +196,7 @@ pub const Evaluator = struct {
                 };
             },
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
-            .string_literal => |string_literal| wrapResult(.value, .{
-                .string = Object.String.init(string_literal.value),
-            }),
+            .string_literal => |string_literal| wrapResult(.value, try self.gc.allocString(string_literal.value)),
         };
     }
 
@@ -226,8 +212,8 @@ pub const Evaluator = struct {
             else => {},
         }
 
-        const arguments = try self.allocator.alloc(Object, call_expression.arguments.len);
-        defer self.allocator.free(arguments);
+        const arguments = try self.gc.allocator.alloc(Object, call_expression.arguments.len);
+        defer self.gc.allocator.free(arguments);
 
         for (call_expression.arguments, 0..) |*argument, i| {
             const argument_result = try self.evalExpression(&argument.expression);
@@ -262,13 +248,7 @@ pub const Evaluator = struct {
                 }
 
                 const previous_env = self.environment;
-                const extended_environment = if (self.gc) |collector|
-                    try collector.allocEnvironment(function.environment)
-                else blk: {
-                    const environment_ptr = try self.allocator.create(Environment);
-                    environment_ptr.* = Environment.initEnclosed(self.allocator, function.environment);
-                    break :blk environment_ptr;
-                };
+                const extended_environment = try self.gc.allocEnvironment(function.environment);
 
                 for (function.parameters, 0..) |parameter, i| {
                     _ = try extended_environment.set(parameter.value, args[i]);

@@ -103,6 +103,81 @@ pub const ExpressionType = union(enum) {
         }
     }
 
+    pub fn clone(self: *const ExpressionType, allocator: std.mem.Allocator) std.mem.Allocator.Error!ExpressionType {
+        return switch (self.*) {
+            .identifier => |ident| .{ .identifier = try ident.clone(allocator) },
+            .integer_literal => |lit| .{ .integer_literal = .{
+                .token = try lit.token.clone(allocator),
+                .value = lit.value,
+            } },
+            .boolean_literal => |lit| .{ .boolean_literal = .{
+                .token = try lit.token.clone(allocator),
+                .value = lit.value,
+            } },
+            .string_literal => |lit| .{ .string_literal = .{
+                .token = try lit.token.clone(allocator),
+                .value = try allocator.dupe(u8, lit.value),
+            } },
+            .prefix_expression => |prefix| blk: {
+                const right = try allocator.create(StatementType.ExpressionStatement);
+                right.* = try prefix.right.clone(allocator);
+                const cloned_token = try prefix.token.clone(allocator);
+                break :blk .{ .prefix_expression = .{
+                    .token = cloned_token,
+                    .operator = cloned_token.ch,
+                    .right = right,
+                } };
+            },
+            .infix_expression => |infix| blk: {
+                const left = try allocator.create(StatementType.ExpressionStatement);
+                left.* = try infix.left.clone(allocator);
+                const right = try allocator.create(StatementType.ExpressionStatement);
+                right.* = try infix.right.clone(allocator);
+                const cloned_token = try infix.token.clone(allocator);
+                break :blk .{ .infix_expression = .{
+                    .token = cloned_token,
+                    .operator = cloned_token.ch,
+                    .left = left,
+                    .right = right,
+                } };
+            },
+            .if_expression => |if_exp| blk: {
+                const condition = try allocator.create(StatementType.ExpressionStatement);
+                condition.* = try if_exp.condition.clone(allocator);
+                break :blk .{ .if_expression = .{
+                    .token = try if_exp.token.clone(allocator),
+                    .condition = condition,
+                    .consequence = try if_exp.consequence.clone(allocator),
+                    .alternative = if (if_exp.alternative) |alt| try alt.clone(allocator) else null,
+                } };
+            },
+            .function_literal => |func| blk: {
+                const params = try allocator.alloc(Identifier, func.parameters.len);
+                for (func.parameters, 0..) |param, i| {
+                    params[i] = try param.clone(allocator);
+                }
+                break :blk .{ .function_literal = .{
+                    .token = try func.token.clone(allocator),
+                    .parameters = params,
+                    .body = try func.body.clone(allocator),
+                } };
+            },
+            .call_expression => |call| blk: {
+                const function = try allocator.create(StatementType.ExpressionStatement);
+                function.* = try call.function.clone(allocator);
+                const arguments = try allocator.alloc(StatementType.ExpressionStatement, call.arguments.len);
+                for (call.arguments, 0..) |*arg, i| {
+                    arguments[i] = try arg.clone(allocator);
+                }
+                break :blk .{ .call_expression = .{
+                    .token = try call.token.clone(allocator),
+                    .function = function,
+                    .arguments = arguments,
+                } };
+            },
+        };
+    }
+
     pub fn initStringLiteral(tkn: Token, value: []const u8) ExpressionType {
         return .{
             .string_literal = .{
@@ -402,6 +477,13 @@ pub const Identifier = struct {
         };
     }
 
+    pub fn clone(self: Identifier, allocator: std.mem.Allocator) std.mem.Allocator.Error!Identifier {
+        return .{
+            .token = try self.token.clone(allocator),
+            .value = try allocator.dupe(u8, self.value),
+        };
+    }
+
     pub fn toString(self: *const Identifier, writer: *std.Io.Writer) !void {
         try writer.print("{s}", .{self.value});
         try writer.flush();
@@ -422,6 +504,15 @@ pub const StatementType = union(enum) {
         switch (self.*) {
             inline else => |*val| try val.toString(writer),
         }
+    }
+
+    pub fn clone(self: *const StatementType, allocator: std.mem.Allocator) std.mem.Allocator.Error!StatementType {
+        return switch (self.*) {
+            .let => |*let_stmt| .{ .let = try let_stmt.clone(allocator) },
+            .@"return" => |*ret_stmt| .{ .@"return" = try ret_stmt.clone(allocator) },
+            .expression => |*exp_stmt| .{ .expression = try exp_stmt.clone(allocator) },
+            .block => |*block_stmt| .{ .block = try block_stmt.clone(allocator) },
+        };
     }
 
     pub fn deinit(self: *StatementType, allocator: std.mem.Allocator) void {
@@ -454,6 +545,14 @@ pub const StatementType = union(enum) {
 
         pub fn addStatement(self: *Self, stmt: StatementType) !void {
             try self.statements.append(self.allocator, stmt);
+        }
+
+        pub fn clone(self: *const BlockStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!BlockStatement {
+            var new_block = BlockStatement.init(try self.token.clone(allocator), allocator);
+            for (self.statements.items) |*stmt| {
+                try new_block.addStatement(try stmt.clone(allocator));
+            }
+            return new_block;
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
@@ -537,6 +636,10 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn clone(self: *const ExpressionStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!ExpressionStatement {
+            return .{ .expression = try self.expression.clone(allocator) };
+        }
+
         pub fn toString(self: *const ExpressionStatement, writer: *std.Io.Writer) !void {
             try self.expression.toString(writer);
             try writer.flush();
@@ -583,6 +686,13 @@ pub const StatementType = union(enum) {
         token: Token,
         value: ?ExpressionStatement,
 
+        pub fn clone(self: *const ReturnStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!ReturnStatement {
+            return .{
+                .token = try self.token.clone(allocator),
+                .value = if (self.value) |*val| try val.clone(allocator) else null,
+            };
+        }
+
         pub fn toString(self: *const ReturnStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s}", .{
                 self.token.token_type.toString(),
@@ -602,6 +712,14 @@ pub const StatementType = union(enum) {
         token: Token,
         name: Identifier,
         value: ExpressionStatement,
+
+        pub fn clone(self: *const LetStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!LetStatement {
+            return .{
+                .token = try self.token.clone(allocator),
+                .name = try self.name.clone(allocator),
+                .value = try self.value.clone(allocator),
+            };
+        }
 
         pub fn toString(self: *const LetStatement, writer: *std.Io.Writer) !void {
             try writer.print("{s} ", .{self.token.token_type.toString()});

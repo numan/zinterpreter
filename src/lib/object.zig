@@ -8,7 +8,7 @@ pub const Object = union(enum) {
     null: Null,
     err: *Error,
     function: *Function,
-    string: String,
+    string: *String,
 
     const Self = @This();
     pub const Error = struct {
@@ -28,10 +28,12 @@ pub const Object = union(enum) {
 
     pub const String = struct {
         value: []const u8,
+        marked: bool = false,
 
         pub fn init(value: []const u8) String {
             return String{
                 .value = value,
+                .marked = false,
             };
         }
 
@@ -89,14 +91,25 @@ pub const Object = union(enum) {
         body: *const ast.StatementType.BlockStatement,
         environment: *environment.Environment,
         marked: bool = false,
+        arena: std.heap.ArenaAllocator,
 
-        pub fn init(parameters: []const ast.Identifier, body: *const ast.StatementType.BlockStatement, env: *environment.Environment) Function {
+        pub fn init(
+            parameters: []const ast.Identifier,
+            body: *const ast.StatementType.BlockStatement,
+            env: *environment.Environment,
+            arena: std.heap.ArenaAllocator,
+        ) Function {
             return .{
                 .parameters = parameters,
                 .body = body,
                 .environment = env,
                 .marked = false,
+                .arena = arena,
             };
+        }
+
+        pub fn deinit(self: *Function) void {
+            self.arena.deinit();
         }
 
         pub fn inspect(self: *const Object.Function, writer: *std.Io.Writer) !void {

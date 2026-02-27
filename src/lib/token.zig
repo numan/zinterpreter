@@ -90,6 +90,13 @@ pub const Token = struct {
         };
     }
 
+    pub fn clone(self: Token, allocator: std.mem.Allocator) std.mem.Allocator.Error!Token {
+        return .{
+            .token_type = self.token_type,
+            .ch = try allocator.dupe(u8, self.ch),
+        };
+    }
+
     pub fn fromString(ch: []const u8) ?Token {
         if (TokenType.fromString(ch)) |token_type| {
             return Token.init(token_type, ch);

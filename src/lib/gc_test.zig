@@ -44,6 +44,7 @@ test "gc keeps closure captured environment alive" {
         .parameters = &.{},
         .body = undefined,
         .environment = captured,
+        .arena = std.heap.ArenaAllocator.init(testing.allocator),
     });
 
     _ = try global.set("keep", closure);
@@ -65,6 +66,7 @@ test "gc collects unreachable environment function cycle" {
         .parameters = &.{},
         .body = undefined,
         .environment = cycle_env,
+        .arena = std.heap.ArenaAllocator.init(testing.allocator),
     });
 
     _ = try cycle_env.set("self", closure);
@@ -107,6 +109,33 @@ test "gc keeps reachable errors" {
     try testing.expectEqual(@as(usize, 1), collector.trackedErrorCount());
 }
 
+test "gc collects unreachable strings" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    _ = try collector.allocString("hello");
+
+    try testing.expectEqual(@as(usize, 1), collector.trackedStringCount());
+
+    collector.collect(global);
+
+    try testing.expectEqual(@as(usize, 0), collector.trackedStringCount());
+}
+
+test "gc keeps reachable strings" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("hello");
+    _ = try global.set("greeting", str_obj);
+
+    collector.collect(global);
+
+    try testing.expectEqual(@as(usize, 1), collector.trackedStringCount());
+}
+
 test "gc integration collects transient call frame" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -115,7 +144,7 @@ test "gc integration collects transient call frame" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.initWithGc(arena.allocator(), global, &collector);
+    var evaluator = Evaluator.init(global, &collector);
 
     _ = try evalWithGc(
         "let identity = fn(x) { x; }; identity(5);",
@@ -140,7 +169,7 @@ test "gc integration keeps escaping closure then reclaims it" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.initWithGc(arena.allocator(), global, &collector);
+    var evaluator = Evaluator.init(global, &collector);
 
     _ = try evalWithGc(
         "let newAdder = fn(x) { fn(y) { x + y }; }; let addTwo = newAdder(2);",
@@ -168,7 +197,7 @@ test "gc integration reclaims temporary error objects" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.initWithGc(arena.allocator(), global, &collector);
+    var evaluator = Evaluator.init(global, &collector);
 
     const result = try evalWithGc("foobar", arena.allocator(), &evaluator);
     switch (result) {
