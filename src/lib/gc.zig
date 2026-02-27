@@ -88,6 +88,18 @@ pub const Gc = struct {
         return .{ .string = string_ptr };
     }
 
+    pub fn allocStringConcat(self: *Self, left: []const u8, right: []const u8) !Object {
+        const buf = try self.allocator.alloc(u8, left.len + right.len);
+        errdefer self.allocator.free(buf);
+        @memcpy(buf[0..left.len], left);
+        @memcpy(buf[left.len..], right);
+        const string_ptr = try self.allocator.create(Object.String);
+        errdefer self.allocator.destroy(string_ptr);
+        string_ptr.* = .{ .value = buf, .marked = false };
+        try self.strings.append(self.allocator, string_ptr);
+        return .{ .string = string_ptr };
+    }
+
     pub fn allocErrorOwned(self: *Self, msg: []const u8) !Object {
         const error_ptr = try self.allocator.create(Object.Error);
         error_ptr.* = Object.Error.init(msg);

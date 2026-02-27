@@ -471,6 +471,22 @@ test "error handling" {
             .expected_message = "unknown operator bool + bool",
         },
         .{
+            .input = "\"foo\" - \"bar\"",
+            .expected_message = "unknown operator STRING - STRING",
+        },
+        .{
+            .input = "\"foo\" * \"bar\"",
+            .expected_message = "unknown operator STRING * STRING",
+        },
+        .{
+            .input = "\"foo\" + 1",
+            .expected_message = "type mismatch: string + int",
+        },
+        .{
+            .input = "1 + \"foo\"",
+            .expected_message = "type mismatch: int + string",
+        },
+        .{
             .input = "foobar",
             .expected_message = "identifier not found: foobar",
         },
@@ -734,6 +750,176 @@ test "reassignment of undeclared variable" {
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testErrorObjectMessageEqual(evaluated, "identifier not found: x");
+}
+
+test "string concatenation" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{ .input = "\"Hello\" + \" \" + \"World!\"", .expected = "Hello World!" },
+        .{ .input = "\"foo\" + \"bar\"", .expected = "foobar" },
+        .{ .input = "\"\" + \"hello\"", .expected = "hello" },
+        .{ .input = "\"hello\" + \"\"", .expected = "hello" },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testStringObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input: {s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
+
+test "string equality" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{ .input = "\"foo\" == \"foo\"", .expected = true },
+        .{ .input = "\"foo\" != \"bar\"", .expected = true },
+        .{ .input = "\"foo\" == \"bar\"", .expected = false },
+        .{ .input = "\"foo\" != \"foo\"", .expected = false },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testBooleanObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input: {s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
+
+test "string concatenation gc" {
+    const input =
+        \\let x = "hello";
+        \\x = x + " world";
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testStringObjectEqual(evaluated, "hello world");
+
+    // Only "hello world" should survive — "hello" was released by reassignment,
+    // " world" literal stays at ref_count 0
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Verify x holds the concatenated string
+    const x_val = env.get("x").?;
+    try testStringObjectEqual(x_val, "hello world");
+}
+
+test "chained string concatenation gc" {
+    const input =
+        \\let x = "a" + "b" + "c";
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    _ = try testEval(input, arena.allocator(), &evaluator);
+
+    // Verify x holds the concatenated string
+    const x_val = env.get("x").?;
+    try testStringObjectEqual(x_val, "abc");
+
+    // After GC, only "abc" should survive (ref_count 1 from env).
+    // "a", "b", "ab", "c" are all at ref_count 0 and get swept.
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedStringCount());
+}
+
+test "concat of variables gc frees originals when unreferenced" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    // a="foo", b="bar", c=a+b="foobar", then overwrite a and b with ints
+    _ = try testEval(
+        \\let a = "foo";
+        \\let b = "bar";
+        \\let c = a + b;
+        \\a = 0;
+        \\b = 0;
+    , arena.allocator(), &evaluator);
+
+    // "foo" and "bar" freed by RC on reassignment; only "foobar" in c survives
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    const c_val = env.get("c").?;
+    try testStringObjectEqual(c_val, "foobar");
+}
+
+test "multiple concat results some collected some retained" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    // a = "xy" (from "x"+"y"), b = "12" (from "1"+"2"), then overwrite a
+    _ = try testEval(
+        \\let a = "x" + "y";
+        \\let b = "1" + "2";
+        \\a = 0;
+    , arena.allocator(), &evaluator);
+
+    // "xy" freed by RC on reassignment; temporaries "x","y","1","2" swept by GC
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    const b_val = env.get("b").?;
+    try testStringObjectEqual(b_val, "12");
 }
 
 test "reassignment with string gc" {

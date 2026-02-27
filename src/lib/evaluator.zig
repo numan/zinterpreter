@@ -304,6 +304,14 @@ pub const Evaluator = struct {
                     right.typeName(),
                 }),
             },
+            .string => |right_ptr| switch (left.*) {
+                .string => |left_ptr| try self.evalStringInfixExpression(expression, left_ptr, right_ptr),
+                else => self.errorObj("type mismatch: {s} {s} {s}", .{
+                    left.typeName(),
+                    expression.token.ch,
+                    right.typeName(),
+                }),
+            },
             else => self.errorObj("unknown operator {s} {s} {s}", .{
                 left.typeName(),
                 expression.token.ch,
@@ -331,6 +339,19 @@ pub const Evaluator = struct {
             .eq => if (left.value == right.value) TRUE else FALSE,
             .not_eq => if (left.value != right.value) TRUE else FALSE,
             else => NULL,
+        };
+    }
+
+    fn evalStringInfixExpression(self: *Self, expression: *const ExpressionType.InfixExpression, left: *Object.String, right: *Object.String) !Object {
+        return switch (expression.token.token_type) {
+            .plus => try self.gc.allocStringConcat(left.value, right.value),
+            .eq => if (std.mem.eql(u8, left.value, right.value)) TRUE else FALSE,
+            .not_eq => if (!std.mem.eql(u8, left.value, right.value)) TRUE else FALSE,
+            else => self.errorObj("unknown operator {s} {s} {s}", .{
+                "STRING",
+                expression.token.ch,
+                "STRING",
+            }),
         };
     }
 

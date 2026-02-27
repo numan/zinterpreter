@@ -301,6 +301,45 @@ test "rc cycle not collected by rc alone but collected by mark-and-sweep" {
     try testing.expectEqual(0, collector.trackedFunctionCount());
 }
 
+test "allocStringConcat tracks and produces correct value" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const result = try collector.allocStringConcat("hello", " world");
+    try testing.expectEqualStrings("hello world", result.string.value);
+    try testing.expectEqual(1, collector.trackedStringCount());
+}
+
+test "allocStringConcat with empty strings" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const left_empty = try collector.allocStringConcat("", "world");
+    try testing.expectEqualStrings("world", left_empty.string.value);
+
+    const right_empty = try collector.allocStringConcat("hello", "");
+    try testing.expectEqualStrings("hello", right_empty.string.value);
+
+    const both_empty = try collector.allocStringConcat("", "");
+    try testing.expectEqualStrings("", both_empty.string.value);
+
+    try testing.expectEqual(3, collector.trackedStringCount());
+}
+
+test "allocStringConcat result freed on env overwrite" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    const concat_obj = try collector.allocStringConcat("foo", "bar");
+    _ = try collector.envSet(env, "x", concat_obj);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Overwrite with int — RC drops to 0, string freed immediately
+    _ = try collector.envSet(env, "x", .{ .int = Object.Integer.init(42) });
+    try testing.expectEqual(0, collector.trackedStringCount());
+}
+
 test "rc integration overwrite triggers immediate free" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
