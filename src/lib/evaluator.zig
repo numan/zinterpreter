@@ -13,6 +13,27 @@ const Object = object.Object;
 const Environment = environment.Environment;
 const Gc = gc.Gc;
 
+const BuiltinMapType = std.StaticStringMap(Object);
+const builtins = BuiltinMapType.initComptime(.{
+    .{
+        "len", Object{ .builtin = Object.Builtin.init(&len) },
+    },
+});
+
+fn len(collector: *Gc, args: []const Object) std.mem.Allocator.Error!Object {
+    if (args.len != 1) {
+        const msg = try std.fmt.allocPrint(collector.allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
+        return try collector.allocErrorOwned(msg);
+    }
+    return switch (args[0]) {
+        .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
+        else => {
+            const msg = try std.fmt.allocPrint(collector.allocator, "argument to `len` not supported, got {s}", .{args[0].typeName()});
+            return try collector.allocErrorOwned(msg);
+        },
+    };
+}
+
 pub const Evaluator = struct {
     environment: *Environment,
     gc: *Gc,
@@ -266,17 +287,24 @@ pub const Evaluator = struct {
                 const evaluated = try self.evalBlockStatement(function.body);
                 return unwrapEvalResult(evaluated);
             },
+            .builtin => |builtin| {
+                return try builtin.function(self.gc, args);
+            },
             else => try self.errorObj("not a function: {s}", .{func.typeName()}),
         };
     }
 
     fn evalIdentifierStatement(self: *Self, expression: *const Identifier) !Object {
-        const value = self.environment.get(expression.token.ch);
+        var value = self.environment.get(expression.token.ch);
         if (value) |v| {
             return v;
-        } else {
-            return try self.errorObj("identifier not found: {s}", .{expression.token.ch});
         }
+
+        value = builtins.get(expression.token.ch);
+        if (value) |v| {
+            return v;
+        }
+        return try self.errorObj("identifier not found: {s}", .{expression.token.ch});
     }
 
     fn applyInfixOperator(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {

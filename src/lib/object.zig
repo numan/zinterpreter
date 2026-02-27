@@ -1,6 +1,9 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const environment = @import("environment.zig");
+const gc = @import("gc.zig");
+
+pub const BuiltinFnType = *const fn (*gc.Gc, []const Object) std.mem.Allocator.Error!Object;
 
 pub const Object = union(enum) {
     int: Integer,
@@ -9,6 +12,21 @@ pub const Object = union(enum) {
     err: *Error,
     function: *Function,
     string: *String,
+    builtin: Builtin,
+
+    pub const Builtin = struct {
+        function: BuiltinFnType,
+
+        pub fn init(func: BuiltinFnType) Builtin {
+            return .{ .function = func };
+        }
+
+        pub fn inspect(self: *const Object.Builtin, writer: *std.Io.Writer) !void {
+            _ = self;
+            try writer.writeAll("builtin function");
+            try writer.flush();
+        }
+    };
 
     const Self = @This();
     pub const Error = struct {

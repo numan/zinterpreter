@@ -954,3 +954,145 @@ test "reassignment with string gc" {
     const y_val = env.get("y").?;
     try testStringObjectEqual(y_val, "foo");
 }
+
+test "builtin len function" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "len(\"hello\")", .expected = 5 },
+        .{ .input = "len(\"\")", .expected = 0 },
+        .{ .input = "len(\"hello world\")", .expected = 11 },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input: {s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
+
+test "builtin len errors" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected_message: []const u8,
+    }{
+        .{
+            .input = "len(1)",
+            .expected_message = "argument to `len` not supported, got int",
+        },
+        .{
+            .input = "len(\"one\", \"two\")",
+            .expected_message = "wrong number of arguments. got=2, want=1",
+        },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
+            std.debug.print(
+                "Got wrong error for input: {s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
+
+test "builtin error gc: unreferenced error is collected" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    _ = try testEval("len(1)", arena.allocator(), &evaluator);
+
+    try testing.expectEqual(1, collector.trackedErrorCount());
+    collector.collect(env);
+    try testing.expectEqual(0, collector.trackedErrorCount());
+}
+
+test "builtin error gc: error in let propagates and is collected" {
+    // Errors propagate — `let e = len(1)` does NOT store the error in `e`.
+    // The error is tracked by the GC but unreachable from the environment,
+    // so collection sweeps it.
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    _ = try testEval("let e = len(1);", arena.allocator(), &evaluator);
+
+    // Error is tracked but not stored in the environment
+    try testing.expectEqual(1, collector.trackedErrorCount());
+    collector.collect(env);
+    // Unreachable from env, so collected
+    try testing.expectEqual(0, collector.trackedErrorCount());
+}
+
+test "builtin error gc: wrong arg count error is collected" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    _ = try testEval("len(1, 2)", arena.allocator(), &evaluator);
+
+    try testing.expectEqual(1, collector.trackedErrorCount());
+    collector.collect(env);
+    try testing.expectEqual(0, collector.trackedErrorCount());
+}
+
+test "builtin error gc: multiple errors from separate evals are all collected" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    // Each eval creates one error (errors propagate, so only one per eval)
+    _ = try testEval("len(1)", arena.allocator(), &evaluator);
+    _ = try testEval("len(true)", arena.allocator(), &evaluator);
+
+    try testing.expectEqual(2, collector.trackedErrorCount());
+    collector.collect(env);
+    try testing.expectEqual(0, collector.trackedErrorCount());
+}

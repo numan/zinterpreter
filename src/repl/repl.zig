@@ -52,13 +52,12 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
 
         if (errors.len != 0) {
             try printParseErrors(errors, stdout);
-            continue;
+        } else {
+            const eval = try evaluator.eval(program);
+            try eval.inspect(stdout);
+            try stdout.writeAll("\n");
+            collector.collect(env);
         }
-
-        const eval = try evaluator.eval(program);
-        try eval.inspect(stdout);
-        try stdout.writeAll("\n");
-        collector.collect(env);
 
         try stdout.print("{s} ", .{PROMPT});
 
