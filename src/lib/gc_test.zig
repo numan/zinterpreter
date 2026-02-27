@@ -26,11 +26,11 @@ test "gc collects unreachable environments" {
     const global = try collector.allocEnvironment(null);
     _ = try collector.allocEnvironment(global);
 
-    try testing.expectEqual(@as(usize, 2), collector.trackedEnvironmentCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
 }
 
 test "gc keeps closure captured environment alive" {
@@ -47,12 +47,12 @@ test "gc keeps closure captured environment alive" {
         .arena = std.heap.ArenaAllocator.init(testing.allocator),
     });
 
-    _ = try global.set("keep", closure);
+    _ = try collector.envSet(global, "keep", closure);
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 2), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 1), collector.trackedFunctionCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
 }
 
 test "gc collects unreachable environment function cycle" {
@@ -69,15 +69,15 @@ test "gc collects unreachable environment function cycle" {
         .arena = std.heap.ArenaAllocator.init(testing.allocator),
     });
 
-    _ = try cycle_env.set("self", closure);
+    _ = try collector.envSet(cycle_env, "self", closure);
 
-    try testing.expectEqual(@as(usize, 2), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 1), collector.trackedFunctionCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 0), collector.trackedFunctionCount());
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(0, collector.trackedFunctionCount());
 }
 
 test "gc collects unreachable errors" {
@@ -88,11 +88,11 @@ test "gc collects unreachable errors" {
     const msg = try testing.allocator.dupe(u8, "boom");
     _ = try collector.allocErrorOwned(msg);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedErrorCount());
+    try testing.expectEqual(1, collector.trackedErrorCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 0), collector.trackedErrorCount());
+    try testing.expectEqual(0, collector.trackedErrorCount());
 }
 
 test "gc keeps reachable errors" {
@@ -102,11 +102,11 @@ test "gc keeps reachable errors" {
     const global = try collector.allocEnvironment(null);
     const msg = try testing.allocator.dupe(u8, "boom");
     const err_obj = try collector.allocErrorOwned(msg);
-    _ = try global.set("last_error", err_obj);
+    _ = try collector.envSet(global, "last_error", err_obj);
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedErrorCount());
+    try testing.expectEqual(1, collector.trackedErrorCount());
 }
 
 test "gc collects unreachable strings" {
@@ -116,11 +116,11 @@ test "gc collects unreachable strings" {
     const global = try collector.allocEnvironment(null);
     _ = try collector.allocString("hello");
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedStringCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 0), collector.trackedStringCount());
+    try testing.expectEqual(0, collector.trackedStringCount());
 }
 
 test "gc keeps reachable strings" {
@@ -129,11 +129,11 @@ test "gc keeps reachable strings" {
 
     const global = try collector.allocEnvironment(null);
     const str_obj = try collector.allocString("hello");
-    _ = try global.set("greeting", str_obj);
+    _ = try collector.envSet(global, "greeting", str_obj);
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedStringCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
 }
 
 test "gc integration collects transient call frame" {
@@ -152,13 +152,13 @@ test "gc integration collects transient call frame" {
         &evaluator,
     );
 
-    try testing.expectEqual(@as(usize, 2), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 1), collector.trackedFunctionCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 1), collector.trackedFunctionCount());
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
 }
 
 test "gc integration keeps escaping closure then reclaims it" {
@@ -179,14 +179,14 @@ test "gc integration keeps escaping closure then reclaims it" {
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 2), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 2), collector.trackedFunctionCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(2, collector.trackedFunctionCount());
 
     _ = try evalWithGc("let addTwo = 0;", arena.allocator(), &evaluator);
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedEnvironmentCount());
-    try testing.expectEqual(@as(usize, 1), collector.trackedFunctionCount());
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
 }
 
 test "gc integration reclaims temporary error objects" {
@@ -205,9 +205,139 @@ test "gc integration reclaims temporary error objects" {
         else => return error.TestUnexpectedResult,
     }
 
-    try testing.expectEqual(@as(usize, 1), collector.trackedErrorCount());
+    try testing.expectEqual(1, collector.trackedErrorCount());
 
     collector.collect(global);
 
-    try testing.expectEqual(@as(usize, 0), collector.trackedErrorCount());
+    try testing.expectEqual(0, collector.trackedErrorCount());
+}
+
+test "rc overwrite releases old value" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("hello");
+
+    // Store string in env — retains it (ref_count = 1)
+    _ = try collector.envSet(global, "x", str_obj);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Overwrite with int — releases string (ref_count -> 0), freed immediately
+    _ = try collector.envSet(global, "x", .{ .int = Object.Integer.init(42) });
+    try testing.expectEqual(0, collector.trackedStringCount());
+}
+
+test "rc cascading free through environment" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    _ = try collector.allocEnvironment(null);
+    const inner = try collector.allocEnvironment(null);
+
+    const str_obj = try collector.allocString("cascade");
+    _ = try collector.envSet(inner, "val", str_obj);
+
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+
+    // Manually retain then release inner env to trigger cascading free
+    collector.retainEnvironment(inner);
+    try testing.expectEqual(1, inner.ref_count);
+
+    collector.releaseEnvironment(inner);
+    // inner freed → string inside freed too
+    try testing.expectEqual(0, collector.trackedStringCount());
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+}
+
+test "rc multiple references freed only when last ref drops" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("shared");
+
+    // Store under two keys — ref_count = 2
+    _ = try collector.envSet(global, "a", str_obj);
+    _ = try collector.envSet(global, "b", str_obj);
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testing.expectEqual(2, str_obj.string.ref_count);
+
+    // Overwrite one key — ref_count = 1, still alive
+    _ = try collector.envSet(global, "a", .{ .int = Object.Integer.init(1) });
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testing.expectEqual(1, str_obj.string.ref_count);
+
+    // Overwrite second key — ref_count = 0, freed
+    _ = try collector.envSet(global, "b", .{ .int = Object.Integer.init(2) });
+    try testing.expectEqual(0, collector.trackedStringCount());
+}
+
+test "rc cycle not collected by rc alone but collected by mark-and-sweep" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const cycle_env = try collector.allocEnvironment(null);
+
+    const closure: Object = try collector.allocFunction(.{
+        .parameters = &.{},
+        .body = undefined,
+        .environment = cycle_env,
+        .arena = std.heap.ArenaAllocator.init(testing.allocator),
+    });
+
+    // Create cycle: cycle_env stores closure, closure captures cycle_env
+    _ = try collector.envSet(cycle_env, "self", closure);
+
+    // Both are still tracked (cycle keeps ref_counts >= 1)
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedFunctionCount());
+
+    // Mark-and-sweep from global collects the cycle
+    collector.collect(global);
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(0, collector.trackedFunctionCount());
+}
+
+test "rc integration overwrite triggers immediate free" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(global, &collector);
+
+    _ = try evalWithGc("let x = \"hello\";", arena.allocator(), &evaluator);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Overwrite x — string freed immediately via RC, no collect() needed
+    _ = try evalWithGc("let x = 42;", arena.allocator(), &evaluator);
+    try testing.expectEqual(0, collector.trackedStringCount());
+}
+
+test "rc reassignment releases old value" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(global, &collector);
+
+    // x holds "foo", y copies the reference — string ref_count = 2
+    _ = try evalWithGc("let x = \"foo\"; let y = x;", arena.allocator(), &evaluator);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Reassign x to int — releases one ref, string still alive via y
+    _ = try evalWithGc("x = 10;", arena.allocator(), &evaluator);
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Reassign y to int — releases last ref, string freed
+    _ = try evalWithGc("y = 20;", arena.allocator(), &evaluator);
+    try testing.expectEqual(0, collector.trackedStringCount());
 }

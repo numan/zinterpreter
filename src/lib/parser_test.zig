@@ -968,3 +968,78 @@ test "parsing call expression" {
     try testInfixExpression(&call_exp.arguments[1].expression, .{ .integer = 2 }, "*", .{ .integer = 3 });
     try testInfixExpression(&call_exp.arguments[2].expression, .{ .integer = 4 }, "+", .{ .integer = 5 });
 }
+
+test "parse assign expression" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected_name: []const u8,
+        expected_value: ExpectedValue,
+    }{
+        .{ .input = "x = 5;", .expected_name = "x", .expected_value = .{ .integer = 5 } },
+        .{ .input = "y = true;", .expected_name = "y", .expected_value = .{ .boolean = true } },
+        .{ .input = "foobar = y;", .expected_name = "foobar", .expected_value = .{ .string = "y" } },
+    };
+
+    for (cases) |case| {
+        const allocator = std.testing.allocator;
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try testing.expectEqual(1, program.statements.items.len);
+
+        const expr_stmt = switch (program.statements.items[0]) {
+            .expression => |val| val,
+            else => {
+                std.debug.print("Expected an expression statement. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        const assign_exp = switch (expr_stmt.expression) {
+            .assign_expression => |val| val,
+            else => {
+                std.debug.print("Expected assign expression. Got something else.", .{});
+                return error.TestUnexpectedResult;
+            },
+        };
+
+        try testing.expectEqualStrings(case.expected_name, assign_exp.name.value);
+        try testLiteralExpression(&assign_exp.value.expression, case.expected_value);
+    }
+}
+
+test "assign expression precedence" {
+    const cases = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{
+            .input = "x = 5 + 3;",
+            .expected = "x = (5 + 3)",
+        },
+    };
+
+    for (cases) |case| {
+        const allocator = testing.allocator;
+
+        var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+        defer output_writer.deinit();
+
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+
+        const program = try parser.parse();
+
+        try checkParserErrors(&parser);
+
+        try program.toString(&output_writer.writer);
+
+        try testing.expectEqualStrings(case.expected, output_writer.written());
+    }
+}

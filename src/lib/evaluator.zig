@@ -61,6 +61,13 @@ pub const Evaluator = struct {
         };
     }
 
+    fn unwrapValue(result: EvalResult) ?Object {
+        return switch (result) {
+            .value => |v| v,
+            else => null,
+        };
+    }
+
     inline fn wrapResult(tag: EvalResultTag, value: Object) EvalResult {
         return switch (tag) {
             .value => .{ .value = value },
@@ -108,13 +115,9 @@ pub const Evaluator = struct {
 
     fn evalLetStatement(self: *Self, let_statement: *const StatementType.LetStatement) EvalError!EvalResult {
         const value_result = try self.evalExpressionStatement(&let_statement.value);
+        const value = unwrapValue(value_result) orelse return value_result;
 
-        const value = switch (value_result) {
-            .value => |value| value,
-            else => return value_result,
-        };
-
-        _ = try self.environment.set(let_statement.name.token.ch, value);
+        _ = try self.gc.envSet(self.environment, let_statement.name.token.ch, value);
         return wrapResult(.value, NULL);
     }
 
@@ -138,74 +141,80 @@ pub const Evaluator = struct {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
             }),
-            .function_literal => |*function_literal| {
-                var func_arena = std.heap.ArenaAllocator.init(self.gc.allocator);
-                errdefer func_arena.deinit();
-                const arena_alloc = func_arena.allocator();
-
-                const cloned_params = try arena_alloc.alloc(ast.Identifier, function_literal.parameters.len);
-                for (function_literal.parameters, 0..) |param, i| {
-                    cloned_params[i] = try param.clone(arena_alloc);
-                }
-
-                const cloned_body = try arena_alloc.create(ast.StatementType.BlockStatement);
-                cloned_body.* = try function_literal.body.clone(arena_alloc);
-
-                const allocated_function = try self.gc.allocFunction(Object.Function.init(
-                    cloned_params,
-                    cloned_body,
-                    self.environment,
-                    func_arena,
-                ));
-
-                return wrapResult(.value, allocated_function);
-            },
+            .function_literal => |*function_literal| try self.evalFunctionLiteral(function_literal),
             .call_expression => |*call_expression| try self.evalCallExpression(call_expression),
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
-            .prefix_expression => |*prefix_expression| {
-                const right_result = try self.evalExpression(&prefix_expression.*.right.expression);
-                const right = switch (right_result) {
-                    .value => |value| value,
-                    else => return right_result,
-                };
-
-                const evaluated = try self.evalPrefixExpression(prefix_expression, right);
-                return switch (evaluated) {
-                    .err => wrapResult(.err, evaluated),
-                    else => wrapResult(.value, evaluated),
-                };
-            },
-            .infix_expression => |*infix_expression| {
-                const left_result = try self.evalExpression(&infix_expression.*.left.expression);
-                const left = switch (left_result) {
-                    .value => |value| value,
-                    else => return left_result,
-                };
-
-                const right_result = try self.evalExpression(&infix_expression.*.right.expression);
-                const right = switch (right_result) {
-                    .value => |value| value,
-                    else => return right_result,
-                };
-
-                const evaluated = try self.evalInfixExpression(infix_expression, &left, &right);
-                return switch (evaluated) {
-                    .err => wrapResult(.err, evaluated),
-                    else => wrapResult(.value, evaluated),
-                };
-            },
+            .prefix_expression => |*prefix_expression| try self.evalPrefixExpression(prefix_expression),
+            .infix_expression => |*infix_expression| try self.evalInfixExpression(infix_expression),
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
             .string_literal => |string_literal| wrapResult(.value, try self.gc.allocString(string_literal.value)),
+            .assign_expression => |*assign_exp| try self.evalAssignExpression(assign_exp),
         };
+    }
+
+    fn evalFunctionLiteral(self: *Self, function_literal: *const ExpressionType.FunctionLiteral) EvalError!EvalResult {
+        var func_arena = std.heap.ArenaAllocator.init(self.gc.allocator);
+        errdefer func_arena.deinit();
+        const arena_alloc = func_arena.allocator();
+
+        const cloned_params = try arena_alloc.alloc(ast.Identifier, function_literal.parameters.len);
+        for (function_literal.parameters, 0..) |param, i| {
+            cloned_params[i] = try param.clone(arena_alloc);
+        }
+
+        const cloned_body = try arena_alloc.create(ast.StatementType.BlockStatement);
+        cloned_body.* = try function_literal.body.clone(arena_alloc);
+
+        const allocated_function = try self.gc.allocFunction(Object.Function.init(
+            cloned_params,
+            cloned_body,
+            self.environment,
+            func_arena,
+        ));
+
+        return wrapResult(.value, allocated_function);
+    }
+
+    fn evalPrefixExpression(self: *Self, prefix_expression: *const ExpressionType.PrefixExpression) EvalError!EvalResult {
+        const right_result = try self.evalExpression(&prefix_expression.right.expression);
+        const right = unwrapValue(right_result) orelse return right_result;
+
+        const evaluated = try self.applyPrefixOperator(prefix_expression, right);
+        return switch (evaluated) {
+            .err => wrapResult(.err, evaluated),
+            else => wrapResult(.value, evaluated),
+        };
+    }
+
+    fn evalInfixExpression(self: *Self, infix_expression: *const ExpressionType.InfixExpression) EvalError!EvalResult {
+        const left_result = try self.evalExpression(&infix_expression.left.expression);
+        const left = unwrapValue(left_result) orelse return left_result;
+
+        const right_result = try self.evalExpression(&infix_expression.right.expression);
+        const right = unwrapValue(right_result) orelse return right_result;
+
+        const evaluated = try self.applyInfixOperator(infix_expression, &left, &right);
+        return switch (evaluated) {
+            .err => wrapResult(.err, evaluated),
+            else => wrapResult(.value, evaluated),
+        };
+    }
+
+    fn evalAssignExpression(self: *Self, assign_exp: *const ExpressionType.AssignExpression) EvalError!EvalResult {
+        const value_result = try self.evalExpression(&assign_exp.value.expression);
+        const value = unwrapValue(value_result) orelse return value_result;
+
+        if (self.gc.envSetExisting(self.environment, assign_exp.name.value, value)) |result| {
+            return wrapResult(.value, result);
+        } else {
+            return wrapResult(.err, try self.errorObj("identifier not found: {s}", .{assign_exp.name.value}));
+        }
     }
 
     fn evalCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) EvalError!EvalResult {
         const function_result = try self.evalExpression(&call_expression.function.expression);
-        const function = switch (function_result) {
-            .value => |value| value,
-            else => return function_result,
-        };
+        const function = unwrapValue(function_result) orelse return function_result;
 
         switch (function) {
             .err => return wrapResult(.err, function),
@@ -217,10 +226,7 @@ pub const Evaluator = struct {
 
         for (call_expression.arguments, 0..) |*argument, i| {
             const argument_result = try self.evalExpression(&argument.expression);
-            const evaluated_argument = switch (argument_result) {
-                .value => |value| value,
-                else => return argument_result,
-            };
+            const evaluated_argument = unwrapValue(argument_result) orelse return argument_result;
 
             switch (evaluated_argument) {
                 .err => return wrapResult(.err, evaluated_argument),
@@ -251,7 +257,7 @@ pub const Evaluator = struct {
                 const extended_environment = try self.gc.allocEnvironment(function.environment);
 
                 for (function.parameters, 0..) |parameter, i| {
-                    _ = try extended_environment.set(parameter.value, args[i]);
+                    _ = try self.gc.envSet(extended_environment, parameter.value, args[i]);
                 }
 
                 self.environment = extended_environment;
@@ -273,7 +279,7 @@ pub const Evaluator = struct {
         }
     }
 
-    fn evalInfixExpression(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {
+    fn applyInfixOperator(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {
         return switch (right.*) {
             .int => |*right_ptr| switch (left.*) {
                 .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
@@ -328,7 +334,7 @@ pub const Evaluator = struct {
         };
     }
 
-    fn evalPrefixExpression(self: *Self, operator: *const ExpressionType.PrefixExpression, right: Object) EvalError!Object {
+    fn applyPrefixOperator(self: *Self, operator: *const ExpressionType.PrefixExpression, right: Object) EvalError!Object {
         return switch (operator.token.token_type) {
             .bang => evalBangOperatorExpression(right),
             .minus => try self.evalMinusPrefixOperatorExpression(right),
@@ -356,10 +362,7 @@ pub const Evaluator = struct {
 
     fn evalIfExpression(self: *Self, expression: *const ExpressionType.IfExpression) EvalError!EvalResult {
         const condition_result = try self.evalNode(expression.condition);
-        const condition = switch (condition_result) {
-            .value => |value| value,
-            else => return condition_result,
-        };
+        const condition = unwrapValue(condition_result) orelse return condition_result;
 
         if (isTruthy(condition)) {
             return self.evalBlockStatement(&expression.consequence);

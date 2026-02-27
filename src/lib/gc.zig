@@ -44,16 +44,23 @@ pub const Gc = struct {
         self.functions.deinit(self.allocator);
 
         for (self.environments.items) |env| {
-            env.deinit();
+            var iterator = env.storage.iterator();
+            while (iterator.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            env.storage.deinit();
             self.allocator.destroy(env);
         }
         self.environments.deinit(self.allocator);
     }
 
+    // --- Allocation ---
+
     pub fn allocEnvironment(self: *Self, outer: ?*Environment) !*Environment {
         const env = try self.allocator.create(Environment);
         if (outer) |outer_env| {
             env.* = Environment.initEnclosed(self.allocator, outer_env);
+            self.retainEnvironment(outer_env);
         } else {
             env.* = Environment.init(self.allocator);
         }
@@ -62,15 +69,11 @@ pub const Gc = struct {
         return env;
     }
 
-    pub fn collect(self: *Self, root: *Environment) void {
-        self.markEnvironment(root);
-        self.sweep();
-    }
-
     pub fn allocFunction(self: *Self, function_obj: Object.Function) !Object {
         const function_ptr = try self.allocator.create(Object.Function);
         errdefer self.allocator.destroy(function_ptr);
         function_ptr.* = function_obj;
+        self.retainEnvironment(function_ptr.environment);
         try self.functions.append(self.allocator, function_ptr);
         return .{ .function = function_ptr };
     }
@@ -92,6 +95,255 @@ pub const Gc = struct {
         return .{ .err = error_ptr };
     }
 
+    // --- Reference counting: retain/release ---
+
+    pub fn retainObject(self: *Self, obj: Object) void {
+        _ = self;
+        switch (obj) {
+            .err => |e| e.ref_count += 1,
+            .function => |f| f.ref_count += 1,
+            .string => |s| s.ref_count += 1,
+            else => {},
+        }
+    }
+
+    pub fn releaseObject(self: *Self, obj: Object) void {
+        switch (obj) {
+            .err => |e| {
+                e.ref_count -= 1;
+                if (e.ref_count == 0) self.freeError(e);
+            },
+            .function => |f| {
+                f.ref_count -= 1;
+                if (f.ref_count == 0) self.freeFunction(f);
+            },
+            .string => |s| {
+                s.ref_count -= 1;
+                if (s.ref_count == 0) self.freeString(s);
+            },
+            else => {},
+        }
+    }
+
+    pub fn retainEnvironment(self: *Self, env: *Environment) void {
+        _ = self;
+        env.ref_count += 1;
+    }
+
+    pub fn releaseEnvironment(self: *Self, env: *Environment) void {
+        env.ref_count -= 1;
+        if (env.ref_count == 0) self.freeEnvironment(env);
+    }
+
+    // --- Reference counting: free helpers ---
+
+    fn freeError(self: *Self, err_obj: *Object.Error) void {
+        self.removeFromList(*Object.Error, &self.errors, err_obj);
+        self.allocator.free(err_obj.msg);
+        self.allocator.destroy(err_obj);
+    }
+
+    fn freeString(self: *Self, string_obj: *Object.String) void {
+        self.removeFromList(*Object.String, &self.strings, string_obj);
+        self.allocator.free(string_obj.value);
+        self.allocator.destroy(string_obj);
+    }
+
+    fn freeFunction(self: *Self, function_obj: *Object.Function) void {
+        self.removeFromList(*Object.Function, &self.functions, function_obj);
+        // Cascade: release captured environment
+        self.releaseEnvironment(function_obj.environment);
+        function_obj.deinit();
+        self.allocator.destroy(function_obj);
+    }
+
+    fn freeEnvironment(self: *Self, env: *Environment) void {
+        self.removeFromList(*Environment, &self.environments, env);
+        // Cascade: release all stored objects and outer env
+        var iterator = env.storage.iterator();
+        while (iterator.next()) |entry| {
+            self.releaseObject(entry.value_ptr.*);
+            self.allocator.free(entry.key_ptr.*);
+        }
+        env.storage.deinit();
+        if (env.outer) |outer| {
+            self.releaseEnvironment(outer);
+        }
+        self.allocator.destroy(env);
+    }
+
+    fn removeFromList(self: *Self, comptime T: type, list: *std.ArrayList(T), item: T) void {
+        _ = self;
+        for (list.items, 0..) |tracked, i| {
+            if (tracked == item) {
+                _ = list.swapRemove(i);
+                return;
+            }
+        }
+    }
+
+    // --- GC-aware environment set ---
+
+    fn replaceValue(self: *Self, existing_value: *Object, value: Object) Object {
+        // Retain new before releasing old (handles same-object case)
+        self.retainObject(value);
+        self.releaseObject(existing_value.*);
+        existing_value.* = value;
+        return value;
+    }
+
+    pub fn envSet(self: *Self, env: *Environment, key: []const u8, value: Object) !Object {
+        if (env.storage.getPtr(key)) |existing_value| {
+            return self.replaceValue(existing_value, value);
+        }
+
+        self.retainObject(value);
+        const owned_key = try self.allocator.dupe(u8, key);
+        try env.storage.put(owned_key, value);
+        return value;
+    }
+
+    pub fn envSetExisting(self: *Self, env: *Environment, key: []const u8, value: Object) ?Object {
+        if (env.storage.getPtr(key)) |existing_value| {
+            return self.replaceValue(existing_value, value);
+        }
+
+        if (env.outer) |outer| {
+            return self.envSetExisting(outer, key, value);
+        }
+
+        return null;
+    }
+
+    // --- Mark and sweep ---
+
+    pub fn collect(self: *Self, root: *Environment) void {
+        self.markEnvironment(root);
+        self.sweep();
+    }
+
+    fn markObject(self: *Self, obj: Object) void {
+        switch (obj) {
+            .err => |error_obj| {
+                if (!isInList(*Object.Error, self.errors.items, error_obj)) return;
+                if (error_obj.marked) return;
+                error_obj.marked = true;
+            },
+            .function => |function_obj| {
+                if (!isInList(*Object.Function, self.functions.items, function_obj)) return;
+                if (function_obj.marked) return;
+                function_obj.marked = true;
+                self.markEnvironment(function_obj.environment);
+            },
+            .string => |string_obj| {
+                if (!isInList(*Object.String, self.strings.items, string_obj)) return;
+                string_obj.marked = true;
+            },
+            else => {},
+        }
+    }
+
+    fn markEnvironment(self: *Self, env: *Environment) void {
+        if (!isInList(*Environment, self.environments.items, env)) return;
+        if (env.marked) return;
+
+        env.marked = true;
+
+        if (env.outer) |outer| {
+            self.markEnvironment(outer);
+        }
+
+        var iterator = env.storage.iterator();
+        while (iterator.next()) |entry| {
+            self.markObject(entry.value_ptr.*);
+        }
+    }
+
+    fn sweep(self: *Self) void {
+        self.adjustSurvivingRefCounts();
+        self.sweepList(*Object.Error, &self.errors, sweepFreeError);
+        self.sweepList(*Object.String, &self.strings, sweepFreeString);
+        self.sweepList(*Object.Function, &self.functions, sweepFreeFunction);
+        self.sweepList(*Environment, &self.environments, sweepFreeEnvironment);
+    }
+
+    /// For unmarked (dying) objects, decrement ref_counts of their marked (surviving)
+    /// outgoing references. This keeps surviving objects' ref_counts accurate after
+    /// the dying objects are freed without RC cascading.
+    fn adjustSurvivingRefCounts(self: *Self) void {
+        for (self.functions.items) |function_obj| {
+            if (!function_obj.marked) {
+                const captured_env = function_obj.environment;
+                if (captured_env.marked) {
+                    captured_env.ref_count -|= 1;
+                }
+            }
+        }
+
+        for (self.environments.items) |env| {
+            if (!env.marked) {
+                var iterator = env.storage.iterator();
+                while (iterator.next()) |entry| {
+                    switch (entry.value_ptr.*) {
+                        .err => |e| if (e.marked) {
+                            e.ref_count -|= 1;
+                        },
+                        .function => |f| if (f.marked) {
+                            f.ref_count -|= 1;
+                        },
+                        .string => |s| if (s.marked) {
+                            s.ref_count -|= 1;
+                        },
+                        else => {},
+                    }
+                }
+                if (env.outer) |outer| {
+                    if (outer.marked) {
+                        outer.ref_count -|= 1;
+                    }
+                }
+            }
+        }
+    }
+
+    fn sweepList(self: *Self, comptime T: type, list: *std.ArrayList(T), comptime freeFn: fn (*Self, T) void) void {
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const item = list.items[i];
+            if (!item.marked) {
+                freeFn(self, item);
+                _ = list.swapRemove(i);
+            } else {
+                item.marked = false;
+                i += 1;
+            }
+        }
+    }
+
+    fn sweepFreeError(self: *Self, err_obj: *Object.Error) void {
+        self.allocator.free(err_obj.msg);
+        self.allocator.destroy(err_obj);
+    }
+
+    fn sweepFreeString(self: *Self, string_obj: *Object.String) void {
+        self.allocator.free(string_obj.value);
+        self.allocator.destroy(string_obj);
+    }
+
+    fn sweepFreeFunction(self: *Self, function_obj: *Object.Function) void {
+        function_obj.deinit();
+        self.allocator.destroy(function_obj);
+    }
+
+    fn sweepFreeEnvironment(self: *Self, env: *Environment) void {
+        var iterator = env.storage.iterator();
+        while (iterator.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
+        env.storage.deinit();
+        self.allocator.destroy(env);
+    }
+
     pub fn trackedEnvironmentCount(self: *const Self) usize {
         return self.environments.items.len;
     }
@@ -108,154 +360,10 @@ pub const Gc = struct {
         return self.strings.items.len;
     }
 
-    fn isTracked(self: *const Self, env: *Environment) bool {
-        for (self.environments.items) |tracked_env| {
-            if (tracked_env == env) {
-                return true;
-            }
+    fn isInList(comptime T: type, list: []const T, needle: T) bool {
+        for (list) |item| {
+            if (item == needle) return true;
         }
         return false;
-    }
-
-    fn isTrackedError(self: *const Self, err_obj: *Object.Error) bool {
-        for (self.errors.items) |tracked_error| {
-            if (tracked_error == err_obj) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    fn isTrackedFunction(self: *const Self, function_obj: *Object.Function) bool {
-        for (self.functions.items) |tracked_function| {
-            if (tracked_function == function_obj) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    fn isTrackedString(self: *const Self, string_obj: *Object.String) bool {
-        for (self.strings.items) |tracked_string| {
-            if (tracked_string == string_obj) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    fn markObject(self: *Self, obj: Object) void {
-        switch (obj) {
-            .err => |error_obj| {
-                if (!self.isTrackedError(error_obj)) {
-                    return;
-                }
-
-                if (error_obj.marked) {
-                    return;
-                }
-
-                error_obj.marked = true;
-            },
-            .function => |function_obj| {
-                if (!self.isTrackedFunction(function_obj)) {
-                    return;
-                }
-
-                if (function_obj.marked) {
-                    return;
-                }
-
-                function_obj.marked = true;
-                self.markEnvironment(function_obj.environment);
-            },
-            .string => |string_obj| {
-                if (!self.isTrackedString(string_obj)) {
-                    return;
-                }
-
-                string_obj.marked = true;
-            },
-            else => {},
-        }
-    }
-
-    fn markEnvironment(self: *Self, env: *Environment) void {
-        if (!self.isTracked(env)) {
-            return;
-        }
-
-        if (env.marked) {
-            return;
-        }
-
-        env.marked = true;
-
-        if (env.outer) |outer| {
-            self.markEnvironment(outer);
-        }
-
-        var iterator = env.storage.iterator();
-        while (iterator.next()) |entry| {
-            self.markObject(entry.value_ptr.*);
-        }
-    }
-
-    fn sweep(self: *Self) void {
-        var error_index: usize = 0;
-        while (error_index < self.errors.items.len) {
-            const error_obj = self.errors.items[error_index];
-            if (!error_obj.marked) {
-                self.allocator.free(error_obj.msg);
-                self.allocator.destroy(error_obj);
-                _ = self.errors.swapRemove(error_index);
-                continue;
-            }
-
-            error_obj.marked = false;
-            error_index += 1;
-        }
-
-        var string_index: usize = 0;
-        while (string_index < self.strings.items.len) {
-            const string_obj = self.strings.items[string_index];
-            if (!string_obj.marked) {
-                self.allocator.free(string_obj.value);
-                self.allocator.destroy(string_obj);
-                _ = self.strings.swapRemove(string_index);
-                continue;
-            }
-
-            string_obj.marked = false;
-            string_index += 1;
-        }
-
-        var function_index: usize = 0;
-        while (function_index < self.functions.items.len) {
-            const function_obj = self.functions.items[function_index];
-            if (!function_obj.marked) {
-                function_obj.deinit();
-                self.allocator.destroy(function_obj);
-                _ = self.functions.swapRemove(function_index);
-                continue;
-            }
-
-            function_obj.marked = false;
-            function_index += 1;
-        }
-
-        var i: usize = 0;
-        while (i < self.environments.items.len) {
-            const env = self.environments.items[i];
-            if (!env.marked) {
-                env.deinit();
-                self.allocator.destroy(env);
-                _ = self.environments.swapRemove(i);
-                continue;
-            }
-
-            env.marked = false;
-            i += 1;
-        }
     }
 };

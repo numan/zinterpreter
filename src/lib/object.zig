@@ -14,6 +14,7 @@ pub const Object = union(enum) {
     pub const Error = struct {
         msg: []const u8,
         marked: bool = false,
+        ref_count: usize = 0,
 
         pub fn init(m: []const u8) Error {
             return .{ .msg = m, .marked = false };
@@ -29,6 +30,7 @@ pub const Object = union(enum) {
     pub const String = struct {
         value: []const u8,
         marked: bool = false,
+        ref_count: usize = 0,
 
         pub fn init(value: []const u8) String {
             return String{
@@ -91,6 +93,7 @@ pub const Object = union(enum) {
         body: *const ast.StatementType.BlockStatement,
         environment: *environment.Environment,
         marked: bool = false,
+        ref_count: usize = 0,
         arena: std.heap.ArenaAllocator,
 
         pub fn init(

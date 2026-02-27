@@ -680,3 +680,91 @@ test "string literal" {
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testStringObjectEqual(evaluated, "Hello World!");
 }
+
+test "variable reassignment" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "let x = 5; x = 10; x;", .expected = 10 },
+        .{ .input = "let x = 1; let y = 2; x = y; x;", .expected = 2 },
+        .{
+            .input =
+            \\let x = 1;
+            \\let f = fn() { x = 2; };
+            \\f();
+            \\x;
+            ,
+            .expected = 2,
+        },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print(
+                "Got wrong value for input:\n{s}\n",
+                .{case.input},
+            );
+            return err;
+        };
+    }
+}
+
+test "reassignment of undeclared variable" {
+    const input = "x = 5;";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testErrorObjectMessageEqual(evaluated, "identifier not found: x");
+}
+
+test "reassignment with string gc" {
+    // Reassigning a variable that held a string to an int.
+    // The string should be properly released via GC ref counting.
+    const input =
+        \\let x = "foo";
+        \\let y = x;
+        \\x = 10;
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testIntegerObjectEqual(evaluated, 10);
+
+    // The string "foo" should still be tracked (y still references it)
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // x should now be 10
+    const x_val = env.get("x").?;
+    try testing.expectEqual(10, x_val.int.value);
+
+    // y should still be "foo"
+    const y_val = env.get("y").?;
+    try testStringObjectEqual(y_val, "foo");
+}

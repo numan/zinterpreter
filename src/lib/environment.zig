@@ -9,6 +9,7 @@ pub const Environment = struct {
     storage: StorageHashMap,
     outer: ?*Environment,
     marked: bool = false,
+    ref_count: usize = 0,
 
     const Self = @This();
 
@@ -27,14 +28,6 @@ pub const Environment = struct {
         return env;
     }
 
-    pub fn deinit(self: *Self) void {
-        var iterator = self.storage.iterator();
-        while (iterator.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-        }
-        self.storage.deinit();
-    }
-
     pub fn get(self: *const Self, key: []const u8) ?Object {
         if (self.storage.get(key)) |value| {
             return value;
@@ -47,14 +40,4 @@ pub const Environment = struct {
         return null;
     }
 
-    pub fn set(self: *Self, key: []const u8, value: Object) !Object {
-        if (self.storage.getPtr(key)) |existing_value| {
-            existing_value.* = value;
-            return value;
-        }
-
-        const owned_key = try self.allocator.dupe(u8, key);
-        try self.storage.put(owned_key, value);
-        return value;
-    }
 };

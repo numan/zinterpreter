@@ -355,6 +355,33 @@ pub const Parser = struct {
         return try list.toOwnedSlice(self.allocator);
     }
 
+    fn parseAssignExpression(self: *Self, left: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
+        const assign_token = self.current_token;
+
+        const name = switch (left.expression) {
+            .identifier => |ident| ident,
+            else => {
+                try self.errors.append(self.allocator, try std.fmt.allocPrint(self.allocator, "expected identifier on left side of assignment, got {}", .{std.meta.activeTag(left.expression)}));
+                self.allocator.destroy(left);
+                return null;
+            },
+        };
+
+        self.nextToken();
+
+        const value = try self.parseExpression(.lowest) orelse {
+            self.allocator.destroy(left);
+            return null;
+        };
+        const value_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
+        value_ptr.* = value;
+
+        // Free the left pointer since we extracted the identifier by value
+        self.allocator.destroy(left);
+
+        return ast.StatementType.ExpressionStatement.initAssignExpression(assign_token, name, value_ptr);
+    }
+
     pub fn parseStringLiteral(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
         return ast.StatementType.ExpressionStatement.initStringLiteral(self.current_token, self.current_token.ch);
     }
@@ -362,6 +389,7 @@ pub const Parser = struct {
     pub fn getPrecedence(self: *const Self, token_type: TokenType) Precedence {
         _ = self;
         return switch (token_type) {
+            .assign => .assign,
             .eq, .not_eq => .equals,
             .lt, .gt => .less_greater,
             .plus, .minus => .sum,
@@ -399,6 +427,7 @@ pub const Parser = struct {
         return switch (token_type) {
             inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt => Self.parseInfixExpression,
             .lparen => Self.parseCallExpression,
+            .assign => Self.parseAssignExpression,
             else => null,
         };
     }

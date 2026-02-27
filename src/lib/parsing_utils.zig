@@ -1,5 +1,6 @@
-pub const Precedence = enum(u3) {
+pub const Precedence = enum(u4) {
     lowest,
+    assign, // =
     equals, // ==
     less_greater, // <, >
     sum, // +

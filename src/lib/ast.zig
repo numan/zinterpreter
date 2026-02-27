@@ -94,6 +94,7 @@ pub const ExpressionType = union(enum) {
     if_expression: IfExpression,
     call_expression: CallExpression,
     string_literal: StringLiteral,
+    assign_expression: AssignExpression,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -175,6 +176,15 @@ pub const ExpressionType = union(enum) {
                     .arguments = arguments,
                 } };
             },
+            .assign_expression => |assign| blk: {
+                const value = try allocator.create(StatementType.ExpressionStatement);
+                value.* = try assign.value.clone(allocator);
+                break :blk .{ .assign_expression = .{
+                    .token = try assign.token.clone(allocator),
+                    .name = try assign.name.clone(allocator),
+                    .value = value,
+                } };
+            },
         };
     }
 
@@ -237,6 +247,12 @@ pub const ExpressionType = union(enum) {
     pub fn initCallExpression(tkn: Token, function: *StatementType.ExpressionStatement, arguments: []StatementType.ExpressionStatement) ExpressionType {
         return .{
             .call_expression = CallExpression.init(tkn, function, arguments),
+        };
+    }
+
+    pub fn initAssignExpression(tkn: Token, name: Identifier, value: *StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .assign_expression = AssignExpression.init(tkn, name, value),
         };
     }
 
@@ -464,6 +480,32 @@ pub const ExpressionType = union(enum) {
             return self.token.ch;
         }
     };
+
+    pub const AssignExpression = struct {
+        const Self = @This();
+        token: Token,
+        name: Identifier,
+        value: *StatementType.ExpressionStatement,
+
+        pub fn init(tkn: Token, name: Identifier, value: *StatementType.ExpressionStatement) Self {
+            return .{
+                .token = tkn,
+                .name = name,
+                .value = value,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            try self.name.toString(writer);
+            _ = try writer.write(" = ");
+            try self.value.expression.toString(writer);
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 };
 
 pub const Identifier = struct {
@@ -636,6 +678,12 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initAssignExpression(tkn: Token, name: Identifier, value: *ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionType.initAssignExpression(tkn, name, value),
+            };
+        }
+
         pub fn clone(self: *const ExpressionStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!ExpressionStatement {
             return .{ .expression = try self.expression.clone(allocator) };
         }
@@ -676,6 +724,10 @@ pub const StatementType = union(enum) {
                         arg.deinit(allocator);
                     }
                     allocator.free(call_exp.arguments);
+                },
+                .assign_expression => |*assign_exp| {
+                    assign_exp.value.deinit(allocator);
+                    allocator.destroy(assign_exp.value);
                 },
                 else => {},
             }
