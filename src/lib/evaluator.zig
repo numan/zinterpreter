@@ -20,23 +20,20 @@ const builtins = BuiltinMapType.initComptime(.{
     },
 });
 
-fn len(collector: *Gc, args: []const Object) std.mem.Allocator.Error!Object {
+fn len(self: *Evaluator, args: []const Object) std.mem.Allocator.Error!Object {
     if (args.len != 1) {
-        const msg = try std.fmt.allocPrint(collector.allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
-        return try collector.allocErrorOwned(msg);
+        return try self.errorObj("wrong number of arguments. got={d}, want=1", .{args.len});
     }
     return switch (args[0]) {
         .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
-        else => {
-            const msg = try std.fmt.allocPrint(collector.allocator, "argument to `len` not supported, got {s}", .{args[0].typeName()});
-            return try collector.allocErrorOwned(msg);
-        },
+        else => return try self.errorObj("argument to `len` not supported, got {s}", .{args[0].typeName()}),
     };
 }
 
 pub const Evaluator = struct {
     environment: *Environment,
     gc: *Gc,
+    last_error: ?Object.Error = null,
 
     const Self = @This();
     const EvalError = error{OutOfMemory};
@@ -57,10 +54,23 @@ pub const Evaluator = struct {
         return .{
             .environment = env,
             .gc = collector,
+            .last_error = null,
         };
     }
 
+    pub fn deinit(self: *Self) void {
+        self.freeLastError();
+    }
+
+    fn freeLastError(self: *Self) void {
+        if (self.last_error) |err| {
+            self.gc.allocator.free(err.msg);
+            self.last_error = null;
+        }
+    }
+
     pub fn eval(self: *Self, node: anytype) EvalError!Object {
+        self.freeLastError();
         return unwrapEvalResult(try self.evalNode(node));
     }
 
@@ -99,7 +109,9 @@ pub const Evaluator = struct {
 
     fn errorObj(self: *Self, comptime format: []const u8, args: anytype) EvalError!Object {
         const msg = try std.fmt.allocPrint(self.gc.allocator, format, args);
-        return try self.gc.allocErrorOwned(msg);
+        self.freeLastError();
+        self.last_error = Object.Error.init(msg);
+        return .{ .err = self.last_error.? };
     }
 
     fn evalProgram(self: *Self, program: *const Program) EvalError!EvalResult {
@@ -288,7 +300,7 @@ pub const Evaluator = struct {
                 return unwrapEvalResult(evaluated);
             },
             .builtin => |builtin| {
-                return try builtin.function(self.gc, args);
+                return try builtin.function(self, args);
             },
             else => try self.errorObj("not a function: {s}", .{func.typeName()}),
         };

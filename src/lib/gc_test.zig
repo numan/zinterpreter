@@ -80,35 +80,6 @@ test "gc collects unreachable environment function cycle" {
     try testing.expectEqual(0, collector.trackedFunctionCount());
 }
 
-test "gc collects unreachable errors" {
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const global = try collector.allocEnvironment(null);
-    const msg = try testing.allocator.dupe(u8, "boom");
-    _ = try collector.allocErrorOwned(msg);
-
-    try testing.expectEqual(1, collector.trackedErrorCount());
-
-    collector.collect(global);
-
-    try testing.expectEqual(0, collector.trackedErrorCount());
-}
-
-test "gc keeps reachable errors" {
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const global = try collector.allocEnvironment(null);
-    const msg = try testing.allocator.dupe(u8, "boom");
-    const err_obj = try collector.allocErrorOwned(msg);
-    _ = try collector.envSet(global, "last_error", err_obj);
-
-    collector.collect(global);
-
-    try testing.expectEqual(1, collector.trackedErrorCount());
-}
-
 test "gc collects unreachable strings" {
     var collector = Gc.init(testing.allocator);
     defer collector.deinit();
@@ -145,6 +116,7 @@ test "gc integration collects transient call frame" {
 
     const global = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(global, &collector);
+    defer evaluator.deinit();
 
     _ = try evalWithGc(
         "let identity = fn(x) { x; }; identity(5);",
@@ -170,6 +142,7 @@ test "gc integration keeps escaping closure then reclaims it" {
 
     const global = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(global, &collector);
+    defer evaluator.deinit();
 
     _ = try evalWithGc(
         "let newAdder = fn(x) { fn(y) { x + y }; }; let addTwo = newAdder(2);",
@@ -187,29 +160,6 @@ test "gc integration keeps escaping closure then reclaims it" {
 
     try testing.expectEqual(1, collector.trackedEnvironmentCount());
     try testing.expectEqual(1, collector.trackedFunctionCount());
-}
-
-test "gc integration reclaims temporary error objects" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(global, &collector);
-
-    const result = try evalWithGc("foobar", arena.allocator(), &evaluator);
-    switch (result) {
-        .err => {},
-        else => return error.TestUnexpectedResult,
-    }
-
-    try testing.expectEqual(1, collector.trackedErrorCount());
-
-    collector.collect(global);
-
-    try testing.expectEqual(0, collector.trackedErrorCount());
 }
 
 test "rc overwrite releases old value" {
@@ -349,6 +299,7 @@ test "rc integration overwrite triggers immediate free" {
 
     const global = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(global, &collector);
+    defer evaluator.deinit();
 
     _ = try evalWithGc("let x = \"hello\";", arena.allocator(), &evaluator);
     try testing.expectEqual(1, collector.trackedStringCount());
@@ -367,6 +318,7 @@ test "rc reassignment releases old value" {
 
     const global = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(global, &collector);
+    defer evaluator.deinit();
 
     // x holds "foo", y copies the reference — string ref_count = 2
     _ = try evalWithGc("let x = \"foo\"; let y = x;", arena.allocator(), &evaluator);

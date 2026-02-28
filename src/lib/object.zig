@@ -1,18 +1,20 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const environment = @import("environment.zig");
-const gc = @import("gc.zig");
+const evaluator_mod = @import("evaluator.zig");
 
-pub const BuiltinFnType = *const fn (*gc.Gc, []const Object) std.mem.Allocator.Error!Object;
+pub const BuiltinFnType = *const fn (*evaluator_mod.Evaluator, []const Object) std.mem.Allocator.Error!Object;
 
 pub const Object = union(enum) {
     int: Integer,
     bool: Boolean,
     null: Null,
-    err: *Error,
+    err: Error,
     function: *Function,
     string: *String,
     builtin: Builtin,
+
+    const Self = @This();
 
     pub const Builtin = struct {
         function: BuiltinFnType,
@@ -21,21 +23,18 @@ pub const Object = union(enum) {
             return .{ .function = func };
         }
 
-        pub fn inspect(self: *const Object.Builtin, writer: *std.Io.Writer) !void {
+        pub fn inspect(self: *const Builtin, writer: *std.Io.Writer) !void {
             _ = self;
             try writer.writeAll("builtin function");
             try writer.flush();
         }
     };
 
-    const Self = @This();
     pub const Error = struct {
         msg: []const u8,
-        marked: bool = false,
-        ref_count: usize = 0,
 
         pub fn init(m: []const u8) Error {
-            return .{ .msg = m, .marked = false };
+            return .{ .msg = m };
         }
 
         pub fn inspect(self: *const Object.Error, writer: *std.Io.Writer) !void {

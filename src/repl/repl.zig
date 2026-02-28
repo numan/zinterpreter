@@ -34,6 +34,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     const env = try collector.allocEnvironment(null);
 
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();

@@ -159,6 +159,7 @@ test "eval integer expression" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -263,6 +264,7 @@ test "eval boolean" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
@@ -309,6 +311,7 @@ test "bang operator" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testBooleanObjectEqual(evaluated, case.expected);
@@ -359,6 +362,7 @@ test "if else expressions" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         if (case.expected) |expected| {
@@ -401,6 +405,7 @@ test "return statements" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
@@ -423,6 +428,7 @@ test "bare return statements" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(input, arena.allocator(), &evaluator);
         try testNullObject(evaluated);
@@ -501,6 +507,7 @@ test "error handling" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
@@ -533,6 +540,7 @@ test "let statements" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         try testIntegerObjectEqual(evaluated, case.expected);
@@ -550,6 +558,7 @@ test "function object" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
 
@@ -600,6 +609,7 @@ test "function application" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -630,6 +640,7 @@ test "closures" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testIntegerObjectEqual(evaluated, 4);
@@ -669,6 +680,7 @@ test "function as argument" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -692,6 +704,7 @@ test "string literal" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testStringObjectEqual(evaluated, "Hello World!");
@@ -724,6 +737,7 @@ test "variable reassignment" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -747,6 +761,7 @@ test "reassignment of undeclared variable" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testErrorObjectMessageEqual(evaluated, "identifier not found: x");
@@ -772,6 +787,7 @@ test "string concatenation" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testStringObjectEqual(evaluated, case.expected) catch |err| {
@@ -804,6 +820,7 @@ test "string equality" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testBooleanObjectEqual(evaluated, case.expected) catch |err| {
@@ -830,6 +847,7 @@ test "string concatenation gc" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testStringObjectEqual(evaluated, "hello world");
@@ -857,6 +875,7 @@ test "chained string concatenation gc" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     _ = try testEval(input, arena.allocator(), &evaluator);
 
@@ -879,6 +898,7 @@ test "concat of variables gc frees originals when unreferenced" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     // a="foo", b="bar", c=a+b="foobar", then overwrite a and b with ints
     _ = try testEval(
@@ -906,6 +926,7 @@ test "multiple concat results some collected some retained" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     // a = "xy" (from "x"+"y"), b = "12" (from "1"+"2"), then overwrite a
     _ = try testEval(
@@ -939,6 +960,7 @@ test "reassignment with string gc" {
 
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testIntegerObjectEqual(evaluated, 10);
@@ -974,6 +996,7 @@ test "builtin len function" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testIntegerObjectEqual(evaluated, case.expected) catch |err| {
@@ -1010,6 +1033,7 @@ test "builtin len errors" {
 
         const env = try collector.allocEnvironment(null);
         var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
@@ -1022,7 +1046,28 @@ test "builtin len errors" {
     }
 }
 
-test "builtin error gc: unreferenced error is collected" {
+test "error survives gc collect" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    // Eval an undefined identifier — produces one error
+    _ = try testEval("foobar", arena.allocator(), &evaluator);
+    try testing.expect(evaluator.last_error != null);
+
+    // GC collect should NOT free the error — evaluator owns it
+    collector.collect(env);
+    try testing.expect(evaluator.last_error != null);
+    try testing.expectEqualStrings("identifier not found: foobar", evaluator.last_error.?.msg);
+}
+
+test "evaluator deinit frees error" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -1032,67 +1077,33 @@ test "builtin error gc: unreferenced error is collected" {
     const env = try collector.allocEnvironment(null);
     var evaluator = Evaluator.init(env, &collector);
 
+    // Produce an error
+    _ = try testEval("foobar", arena.allocator(), &evaluator);
+    try testing.expect(evaluator.last_error != null);
+
+    // Explicit deinit — testing.allocator validates no leaks
+    evaluator.deinit();
+    evaluator.last_error = null;
+}
+
+test "new eval replaces previous error" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    // First error
+    _ = try testEval("foobar", arena.allocator(), &evaluator);
+    try testing.expect(evaluator.last_error != null);
+    try testing.expectEqualStrings("identifier not found: foobar", evaluator.last_error.?.msg);
+
+    // Second error replaces the first (first is freed)
     _ = try testEval("len(1)", arena.allocator(), &evaluator);
-
-    try testing.expectEqual(1, collector.trackedErrorCount());
-    collector.collect(env);
-    try testing.expectEqual(0, collector.trackedErrorCount());
-}
-
-test "builtin error gc: error in let propagates and is collected" {
-    // Errors propagate — `let e = len(1)` does NOT store the error in `e`.
-    // The error is tracked by the GC but unreachable from the environment,
-    // so collection sweeps it.
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
-
-    _ = try testEval("let e = len(1);", arena.allocator(), &evaluator);
-
-    // Error is tracked but not stored in the environment
-    try testing.expectEqual(1, collector.trackedErrorCount());
-    collector.collect(env);
-    // Unreachable from env, so collected
-    try testing.expectEqual(0, collector.trackedErrorCount());
-}
-
-test "builtin error gc: wrong arg count error is collected" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
-
-    _ = try testEval("len(1, 2)", arena.allocator(), &evaluator);
-
-    try testing.expectEqual(1, collector.trackedErrorCount());
-    collector.collect(env);
-    try testing.expectEqual(0, collector.trackedErrorCount());
-}
-
-test "builtin error gc: multiple errors from separate evals are all collected" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    var collector = Gc.init(testing.allocator);
-    defer collector.deinit();
-
-    const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
-
-    // Each eval creates one error (errors propagate, so only one per eval)
-    _ = try testEval("len(1)", arena.allocator(), &evaluator);
-    _ = try testEval("len(true)", arena.allocator(), &evaluator);
-
-    try testing.expectEqual(2, collector.trackedErrorCount());
-    collector.collect(env);
-    try testing.expectEqual(0, collector.trackedErrorCount());
+    try testing.expect(evaluator.last_error != null);
+    try testing.expectEqualStrings("argument to `len` not supported, got int", evaluator.last_error.?.msg);
 }

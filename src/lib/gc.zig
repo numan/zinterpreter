@@ -8,7 +8,6 @@ const Environment = environment.Environment;
 pub const Gc = struct {
     allocator: std.mem.Allocator,
     environments: std.ArrayList(*Environment) = .{},
-    errors: std.ArrayList(*Object.Error) = .{},
     functions: std.ArrayList(*Object.Function) = .{},
     strings: std.ArrayList(*Object.String) = .{},
 
@@ -18,19 +17,12 @@ pub const Gc = struct {
         return .{
             .allocator = allocator,
             .environments = .{},
-            .errors = .{},
             .functions = .{},
             .strings = .{},
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.errors.items) |err_obj| {
-            self.allocator.free(err_obj.msg);
-            self.allocator.destroy(err_obj);
-        }
-        self.errors.deinit(self.allocator);
-
         for (self.strings.items) |string_obj| {
             self.allocator.free(string_obj.value);
             self.allocator.destroy(string_obj);
@@ -100,19 +92,11 @@ pub const Gc = struct {
         return .{ .string = string_ptr };
     }
 
-    pub fn allocErrorOwned(self: *Self, msg: []const u8) !Object {
-        const error_ptr = try self.allocator.create(Object.Error);
-        error_ptr.* = Object.Error.init(msg);
-        try self.errors.append(self.allocator, error_ptr);
-        return .{ .err = error_ptr };
-    }
-
     // --- Reference counting: retain/release ---
 
     pub fn retainObject(self: *Self, obj: Object) void {
         _ = self;
         switch (obj) {
-            .err => |e| e.ref_count += 1,
             .function => |f| f.ref_count += 1,
             .string => |s| s.ref_count += 1,
             else => {},
@@ -121,10 +105,6 @@ pub const Gc = struct {
 
     pub fn releaseObject(self: *Self, obj: Object) void {
         switch (obj) {
-            .err => |e| {
-                e.ref_count -= 1;
-                if (e.ref_count == 0) self.freeError(e);
-            },
             .function => |f| {
                 f.ref_count -= 1;
                 if (f.ref_count == 0) self.freeFunction(f);
@@ -148,12 +128,6 @@ pub const Gc = struct {
     }
 
     // --- Reference counting: free helpers ---
-
-    fn freeError(self: *Self, err_obj: *Object.Error) void {
-        self.removeFromList(*Object.Error, &self.errors, err_obj);
-        self.allocator.free(err_obj.msg);
-        self.allocator.destroy(err_obj);
-    }
 
     fn freeString(self: *Self, string_obj: *Object.String) void {
         self.removeFromList(*Object.String, &self.strings, string_obj);
@@ -236,11 +210,6 @@ pub const Gc = struct {
 
     fn markObject(self: *Self, obj: Object) void {
         switch (obj) {
-            .err => |error_obj| {
-                if (!isInList(*Object.Error, self.errors.items, error_obj)) return;
-                if (error_obj.marked) return;
-                error_obj.marked = true;
-            },
             .function => |function_obj| {
                 if (!isInList(*Object.Function, self.functions.items, function_obj)) return;
                 if (function_obj.marked) return;
@@ -273,7 +242,6 @@ pub const Gc = struct {
 
     fn sweep(self: *Self) void {
         self.adjustSurvivingRefCounts();
-        self.sweepList(*Object.Error, &self.errors, sweepFreeError);
         self.sweepList(*Object.String, &self.strings, sweepFreeString);
         self.sweepList(*Object.Function, &self.functions, sweepFreeFunction);
         self.sweepList(*Environment, &self.environments, sweepFreeEnvironment);
@@ -297,9 +265,6 @@ pub const Gc = struct {
                 var iterator = env.storage.iterator();
                 while (iterator.next()) |entry| {
                     switch (entry.value_ptr.*) {
-                        .err => |e| if (e.marked) {
-                            e.ref_count -|= 1;
-                        },
                         .function => |f| if (f.marked) {
                             f.ref_count -|= 1;
                         },
@@ -332,11 +297,6 @@ pub const Gc = struct {
         }
     }
 
-    fn sweepFreeError(self: *Self, err_obj: *Object.Error) void {
-        self.allocator.free(err_obj.msg);
-        self.allocator.destroy(err_obj);
-    }
-
     fn sweepFreeString(self: *Self, string_obj: *Object.String) void {
         self.allocator.free(string_obj.value);
         self.allocator.destroy(string_obj);
@@ -358,10 +318,6 @@ pub const Gc = struct {
 
     pub fn trackedEnvironmentCount(self: *const Self) usize {
         return self.environments.items.len;
-    }
-
-    pub fn trackedErrorCount(self: *const Self) usize {
-        return self.errors.items.len;
     }
 
     pub fn trackedFunctionCount(self: *const Self) usize {
