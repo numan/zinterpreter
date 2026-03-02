@@ -173,16 +173,19 @@ test "rc overwrite releases old value" {
     _ = try collector.envSet(global, "x", str_obj);
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Overwrite with int — releases string (ref_count -> 0), freed immediately
+    // Overwrite with int — decrements string ref_count to 0
     _ = try collector.envSet(global, "x", .{ .int = Object.Integer.init(42) });
+
+    // Sweep frees the unreachable string
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
 
-test "rc cascading free through environment" {
+test "unreachable environment and its contents collected by sweep" {
     var collector = Gc.init(testing.allocator);
     defer collector.deinit();
 
-    _ = try collector.allocEnvironment(null);
+    const global = try collector.allocEnvironment(null);
     const inner = try collector.allocEnvironment(null);
 
     const str_obj = try collector.allocString("cascade");
@@ -191,12 +194,8 @@ test "rc cascading free through environment" {
     try testing.expectEqual(1, collector.trackedStringCount());
     try testing.expectEqual(2, collector.trackedEnvironmentCount());
 
-    // Manually retain then release inner env to trigger cascading free
-    collector.retainEnvironment(inner);
-    try testing.expectEqual(1, inner.ref_count);
-
-    collector.releaseEnvironment(inner);
-    // inner freed → string inside freed too
+    // inner is unreachable from global — collect frees inner and its string
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedStringCount());
     try testing.expectEqual(1, collector.trackedEnvironmentCount());
 }
@@ -212,19 +211,19 @@ test "rc multiple references freed only when last ref drops" {
     _ = try collector.envSet(global, "a", str_obj);
     _ = try collector.envSet(global, "b", str_obj);
     try testing.expectEqual(1, collector.trackedStringCount());
-    try testing.expectEqual(2, str_obj.string.ref_count);
 
-    // Overwrite one key — ref_count = 1, still alive
+    // Overwrite one key — ref_count = 1, still reachable via "b"
     _ = try collector.envSet(global, "a", .{ .int = Object.Integer.init(1) });
+    collector.collect(global);
     try testing.expectEqual(1, collector.trackedStringCount());
-    try testing.expectEqual(1, str_obj.string.ref_count);
 
-    // Overwrite second key — ref_count = 0, freed
+    // Overwrite second key — ref_count = 0, freed by sweep
     _ = try collector.envSet(global, "b", .{ .int = Object.Integer.init(2) });
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
 
-test "rc cycle not collected by rc alone but collected by mark-and-sweep" {
+test "mark-and-sweep collects unreachable cycle" {
     var collector = Gc.init(testing.allocator);
     defer collector.deinit();
 
@@ -241,14 +240,47 @@ test "rc cycle not collected by rc alone but collected by mark-and-sweep" {
     // Create cycle: cycle_env stores closure, closure captures cycle_env
     _ = try collector.envSet(cycle_env, "self", closure);
 
-    // Both are still tracked (cycle keeps ref_counts >= 1)
+    // Both are still tracked — cycle keeps ref_counts >= 1
     try testing.expectEqual(2, collector.trackedEnvironmentCount());
     try testing.expectEqual(1, collector.trackedFunctionCount());
 
-    // Mark-and-sweep from global collects the cycle
+    // Mark-and-sweep from global collects the entire cycle
     collector.collect(global);
     try testing.expectEqual(1, collector.trackedEnvironmentCount());
     try testing.expectEqual(0, collector.trackedFunctionCount());
+}
+
+test "cycle has positive ref_counts but mark-and-sweep still collects it" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const cycle_env = try collector.allocEnvironment(null);
+
+    const closure: Object = try collector.allocFunction(.{
+        .parameters = &.{},
+        .body = undefined,
+        .environment = cycle_env,
+        .arena = std.heap.ArenaAllocator.init(testing.allocator),
+    });
+
+    // Create cycle: closure captures cycle_env, cycle_env stores closure
+    _ = try collector.envSet(cycle_env, "self", closure);
+
+    // Both have ref_count > 0 despite being unreachable from root
+    try testing.expect(closure.function.ref_count > 0);
+    try testing.expect(cycle_env.ref_count > 0);
+
+    // Also create a non-cyclic unreachable string for contrast
+    const orphan = try collector.allocString("orphan");
+    // orphan has ref_count 0 — no environment references it
+    try testing.expectEqual(0, orphan.string.ref_count);
+
+    // Mark-and-sweep collects both the cycle and the orphan
+    collector.collect(global);
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(0, collector.trackedFunctionCount());
+    try testing.expectEqual(0, collector.trackedStringCount());
 }
 
 test "allocStringConcat tracks and produces correct value" {
@@ -285,12 +317,13 @@ test "allocStringConcat result freed on env overwrite" {
     _ = try collector.envSet(env, "x", concat_obj);
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Overwrite with int — RC drops to 0, string freed immediately
+    // Overwrite with int — RC drops to 0, freed by sweep
     _ = try collector.envSet(env, "x", .{ .int = Object.Integer.init(42) });
+    collector.collect(env);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
 
-test "rc integration overwrite triggers immediate free" {
+test "rc integration overwrite frees after collect" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -304,8 +337,9 @@ test "rc integration overwrite triggers immediate free" {
     _ = try evalWithGc("let x = \"hello\";", arena.allocator(), &evaluator);
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Overwrite x — string freed immediately via RC, no collect() needed
+    // Overwrite x — ref_count drops to 0, freed by collect()
     _ = try evalWithGc("let x = 42;", arena.allocator(), &evaluator);
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
 
@@ -320,16 +354,18 @@ test "rc reassignment releases old value" {
     var evaluator = Evaluator.init(global, &collector);
     defer evaluator.deinit();
 
-    // x holds "foo", y copies the reference — string ref_count = 2
+    // x holds "foo", y copies the reference
     _ = try evalWithGc("let x = \"foo\"; let y = x;", arena.allocator(), &evaluator);
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Reassign x to int — releases one ref, string still alive via y
+    // Reassign x to int — string still reachable via y
     _ = try evalWithGc("x = 10;", arena.allocator(), &evaluator);
+    collector.collect(global);
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Reassign y to int — releases last ref, string freed
+    // Reassign y to int — string unreachable, freed by collect
     _ = try evalWithGc("y = 20;", arena.allocator(), &evaluator);
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
 
@@ -390,8 +426,9 @@ test "rc overwrite releases array and elements" {
     try testing.expectEqual(1, collector.trackedArrayCount());
     try testing.expectEqual(1, collector.trackedStringCount());
 
-    // Overwrite with int — releases array (ref_count -> 0), cascades to string
+    // Overwrite with int — ref_counts drop to 0, freed by sweep
     _ = try collector.envSet(global, "x", .{ .int = Object.Integer.init(42) });
+    collector.collect(global);
     try testing.expectEqual(0, collector.trackedArrayCount());
     try testing.expectEqual(0, collector.trackedStringCount());
 }

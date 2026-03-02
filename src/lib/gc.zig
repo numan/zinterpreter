@@ -113,7 +113,7 @@ pub const Gc = struct {
         return .{ .array = array_ptr };
     }
 
-    // --- Reference counting: retain/release ---
+    // --- Reference counting: retain/decrement ---
 
     pub fn retainObject(self: *Self, obj: Object) void {
         _ = self;
@@ -125,20 +125,12 @@ pub const Gc = struct {
         }
     }
 
-    pub fn releaseObject(self: *Self, obj: Object) void {
+    pub fn decrementRefCount(self: *Self, obj: Object) void {
+        _ = self;
         switch (obj) {
-            .function => |f| {
-                f.ref_count -= 1;
-                if (f.ref_count == 0) self.freeFunction(f);
-            },
-            .string => |s| {
-                s.ref_count -= 1;
-                if (s.ref_count == 0) self.freeString(s);
-            },
-            .array => |a| {
-                a.ref_count -= 1;
-                if (a.ref_count == 0) self.freeArray(a);
-            },
+            .function => |f| f.ref_count -= 1,
+            .string => |s| s.ref_count -= 1,
+            .array => |a| a.ref_count -= 1,
             else => {},
         }
     }
@@ -148,60 +140,9 @@ pub const Gc = struct {
         env.ref_count += 1;
     }
 
-    pub fn releaseEnvironment(self: *Self, env: *Environment) void {
-        env.ref_count -= 1;
-        if (env.ref_count == 0) self.freeEnvironment(env);
-    }
-
-    // --- Reference counting: free helpers ---
-
-    fn freeString(self: *Self, string_obj: *Object.String) void {
-        self.removeFromList(*Object.String, &self.strings, string_obj);
-        self.allocator.free(string_obj.value);
-        self.allocator.destroy(string_obj);
-    }
-
-    fn freeFunction(self: *Self, function_obj: *Object.Function) void {
-        self.removeFromList(*Object.Function, &self.functions, function_obj);
-        // Cascade: release captured environment
-        self.releaseEnvironment(function_obj.environment);
-        function_obj.deinit();
-        self.allocator.destroy(function_obj);
-    }
-
-    fn freeArray(self: *Self, array_obj: *Object.Array) void {
-        self.removeFromList(*Object.Array, &self.arrays, array_obj);
-        // Cascade: release each element
-        for (array_obj.elements) |elem| {
-            self.releaseObject(elem);
-        }
-        self.allocator.free(array_obj.elements);
-        self.allocator.destroy(array_obj);
-    }
-
-    fn freeEnvironment(self: *Self, env: *Environment) void {
-        self.removeFromList(*Environment, &self.environments, env);
-        // Cascade: release all stored objects and outer env
-        var iterator = env.storage.iterator();
-        while (iterator.next()) |entry| {
-            self.releaseObject(entry.value_ptr.*);
-            self.allocator.free(entry.key_ptr.*);
-        }
-        env.storage.deinit();
-        if (env.outer) |outer| {
-            self.releaseEnvironment(outer);
-        }
-        self.allocator.destroy(env);
-    }
-
-    fn removeFromList(self: *Self, comptime T: type, list: *std.ArrayList(T), item: T) void {
+    pub fn decrementEnvRefCount(self: *Self, env: *Environment) void {
         _ = self;
-        for (list.items, 0..) |tracked, i| {
-            if (tracked == item) {
-                _ = list.swapRemove(i);
-                return;
-            }
-        }
+        env.ref_count -= 1;
     }
 
     // --- GC-aware environment set ---
@@ -209,7 +150,7 @@ pub const Gc = struct {
     fn replaceValue(self: *Self, existing_value: *Object, value: Object) Object {
         // Retain new before releasing old (handles same-object case)
         self.retainObject(value);
-        self.releaseObject(existing_value.*);
+        self.decrementRefCount(existing_value.*);
         existing_value.* = value;
         return value;
     }

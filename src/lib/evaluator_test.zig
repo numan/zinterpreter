@@ -852,8 +852,8 @@ test "string concatenation gc" {
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
     try testStringObjectEqual(evaluated, "hello world");
 
-    // Only "hello world" should survive — "hello" was released by reassignment,
-    // " world" literal stays at ref_count 0
+    // Only "hello world" should survive — "hello" ref_count dropped on reassignment,
+    // " world" literal has ref_count 0; both swept by collect()
     collector.collect(env);
     try testing.expectEqual(1, collector.trackedStringCount());
 
@@ -883,8 +883,8 @@ test "chained string concatenation gc" {
     const x_val = env.get("x").?;
     try testStringObjectEqual(x_val, "abc");
 
-    // After GC, only "abc" should survive (ref_count 1 from env).
-    // "a", "b", "ab", "c" are all at ref_count 0 and get swept.
+    // After collect(), only "abc" survives (ref_count 1 from env).
+    // "a", "b", "ab", "c" all have ref_count 0 and are swept.
     collector.collect(env);
     try testing.expectEqual(1, collector.trackedStringCount());
 }
@@ -909,7 +909,7 @@ test "concat of variables gc frees originals when unreferenced" {
         \\b = 0;
     , arena.allocator(), &evaluator);
 
-    // "foo" and "bar" freed by RC on reassignment; only "foobar" in c survives
+    // "foo" and "bar" ref_counts dropped on reassignment; collect() sweeps them
     collector.collect(env);
     try testing.expectEqual(1, collector.trackedStringCount());
 
@@ -935,7 +935,7 @@ test "multiple concat results some collected some retained" {
         \\a = 0;
     , arena.allocator(), &evaluator);
 
-    // "xy" freed by RC on reassignment; temporaries "x","y","1","2" swept by GC
+    // "xy" ref_count dropped on reassignment; temporaries "x","y","1","2" all swept by collect()
     collector.collect(env);
     try testing.expectEqual(1, collector.trackedStringCount());
 
