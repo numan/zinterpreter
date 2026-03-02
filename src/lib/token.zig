@@ -26,6 +26,8 @@ pub const TokenType = enum {
     rparen,
     lbrace,
     rbrace,
+    lbracket,
+    rbracket,
     // Keywords
     function,
     let,
@@ -54,6 +56,8 @@ pub const TokenType = enum {
         .{ ")", .rparen },
         .{ "{", .lbrace },
         .{ "}", .rbrace },
+        .{ "[", .lbracket },
+        .{ "]", .rbracket },
         .{ "fn", .function },
         .{ "let", .let },
         .{ "true", .true },

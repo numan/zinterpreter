@@ -606,6 +606,14 @@ test "infix operator precedence" {
             .input = "add(a + b + c * d / f + g)",
             .expected = "add((((a + b) + ((c * d) / f)) + g))",
         },
+        .{
+            .input = "a * [1, 2, 3, 4][b * c] * d",
+            .expected = "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+        },
+        .{
+            .input = "add(a * b[2], b[1], 2 * [1, 2][1])",
+            .expected = "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+        },
     };
 
     for (cases) |case| {
@@ -1011,6 +1019,97 @@ test "parse assign expression" {
         try testing.expectEqualStrings(case.expected_name, assign_exp.name.value);
         try testLiteralExpression(&assign_exp.value.expression, case.expected_value);
     }
+}
+
+test "parse array literal" {
+    const input = "[1, 2, 3]";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const arr = switch (expr_stmt.expression) {
+        .array_literal => |val| val,
+        else => {
+            std.debug.print("Expected array literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(3, arr.elements.len);
+    try testIntegerLiteral(&arr.elements[0].expression, 1);
+    try testIntegerLiteral(&arr.elements[1].expression, 2);
+    try testIntegerLiteral(&arr.elements[2].expression, 3);
+}
+
+test "parse empty array literal" {
+    const input = "[]";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const arr = switch (expr_stmt.expression) {
+        .array_literal => |val| val,
+        else => {
+            std.debug.print("Expected array literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(0, arr.elements.len);
+}
+
+test "parse index expression" {
+    const input = "myArray[1 + 1]";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const idx = switch (expr_stmt.expression) {
+        .index_expression => |val| val,
+        else => {
+            std.debug.print("Expected index expression. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testIdentifier(&idx.left.expression, "myArray");
+    try testInfixExpression(&idx.index.expression, .{ .integer = 1 }, "+", .{ .integer = 1 });
 }
 
 test "assign expression precedence" {

@@ -178,6 +178,7 @@ test "read tokens" {
         \\ 10 != 9;
         \\ "foo bar"
         \\ "foobar"
+        \\ [1, 2]
     ;
 
     const tests = [_]struct { TokenType, []const u8 }{
@@ -256,6 +257,11 @@ test "read tokens" {
         .{ TokenType.semicolon, ";" },
         .{ TokenType.string, "foo bar" },
         .{ TokenType.string, "foobar" },
+        .{ TokenType.lbracket, "[" },
+        .{ TokenType.int, "1" },
+        .{ TokenType.comma, "," },
+        .{ TokenType.int, "2" },
+        .{ TokenType.rbracket, "]" },
         .{ TokenType.eof, "eof" },
     };
 

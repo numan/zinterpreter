@@ -7,4 +7,5 @@ pub const Precedence = enum(u4) {
     product, // *
     prefix, // -X or !X
     call, // myFunction(X)
+    index, // array[index]
 };

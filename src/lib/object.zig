@@ -12,6 +12,7 @@ pub const Object = union(enum) {
     err: Error,
     function: *Function,
     string: *String,
+    array: *Array,
     builtin: Builtin,
 
     const Self = @This();
@@ -144,6 +145,22 @@ pub const Object = union(enum) {
             try writer.writeAll(") {");
             try self.body.toString(writer);
             try writer.writeAll("}");
+            try writer.flush();
+        }
+    };
+
+    pub const Array = struct {
+        elements: []Object,
+        marked: bool = false,
+        ref_count: usize = 0,
+
+        pub fn inspect(self: *const Object.Array, writer: *std.Io.Writer) !void {
+            try writer.writeAll("[");
+            for (self.elements, 0..) |*elem, i| {
+                try elem.inspect(writer);
+                if (i < self.elements.len - 1) try writer.writeAll(", ");
+            }
+            try writer.writeAll("]");
             try writer.flush();
         }
     };

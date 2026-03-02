@@ -332,3 +332,87 @@ test "rc reassignment releases old value" {
     _ = try evalWithGc("y = 20;", arena.allocator(), &evaluator);
     try testing.expectEqual(0, collector.trackedStringCount());
 }
+
+test "gc collects unreachable arrays" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    _ = try collector.allocArray(&.{});
+
+    try testing.expectEqual(1, collector.trackedArrayCount());
+
+    collector.collect(global);
+
+    try testing.expectEqual(0, collector.trackedArrayCount());
+}
+
+test "gc keeps reachable arrays" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const arr_obj = try collector.allocArray(&.{
+        .{ .int = Object.Integer.init(1) },
+        .{ .int = Object.Integer.init(2) },
+    });
+    _ = try collector.envSet(global, "arr", arr_obj);
+
+    collector.collect(global);
+
+    try testing.expectEqual(1, collector.trackedArrayCount());
+}
+
+test "gc marks strings inside arrays" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("hello");
+    const arr_obj = try collector.allocArray(&.{str_obj});
+    _ = try collector.envSet(global, "arr", arr_obj);
+
+    collector.collect(global);
+
+    try testing.expectEqual(1, collector.trackedArrayCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
+}
+
+test "rc overwrite releases array and elements" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("inside");
+    const arr_obj = try collector.allocArray(&.{str_obj});
+    _ = try collector.envSet(global, "x", arr_obj);
+
+    try testing.expectEqual(1, collector.trackedArrayCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
+
+    // Overwrite with int — releases array (ref_count -> 0), cascades to string
+    _ = try collector.envSet(global, "x", .{ .int = Object.Integer.init(42) });
+    try testing.expectEqual(0, collector.trackedArrayCount());
+    try testing.expectEqual(0, collector.trackedStringCount());
+}
+
+test "gc array dies but shared string survives" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const global = try collector.allocEnvironment(null);
+    const str_obj = try collector.allocString("shared");
+
+    // String stored both in env directly and inside an unreachable array
+    _ = try collector.envSet(global, "s", str_obj);
+    _ = try collector.allocArray(&.{str_obj});
+
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testing.expectEqual(1, collector.trackedArrayCount());
+
+    collector.collect(global);
+
+    // Array collected, string survives because env references it
+    try testing.expectEqual(0, collector.trackedArrayCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
+}

@@ -10,6 +10,7 @@ pub const Gc = struct {
     environments: std.ArrayList(*Environment) = .{},
     functions: std.ArrayList(*Object.Function) = .{},
     strings: std.ArrayList(*Object.String) = .{},
+    arrays: std.ArrayList(*Object.Array) = .{},
 
     const Self = @This();
 
@@ -19,6 +20,7 @@ pub const Gc = struct {
             .environments = .{},
             .functions = .{},
             .strings = .{},
+            .arrays = .{},
         };
     }
 
@@ -34,6 +36,12 @@ pub const Gc = struct {
             self.allocator.destroy(function_obj);
         }
         self.functions.deinit(self.allocator);
+
+        for (self.arrays.items) |array_obj| {
+            self.allocator.free(array_obj.elements);
+            self.allocator.destroy(array_obj);
+        }
+        self.arrays.deinit(self.allocator);
 
         for (self.environments.items) |env| {
             var iterator = env.storage.iterator();
@@ -92,6 +100,19 @@ pub const Gc = struct {
         return .{ .string = string_ptr };
     }
 
+    pub fn allocArray(self: *Self, elements: []const Object) !Object {
+        const duped_elements = try self.allocator.dupe(Object, elements);
+        errdefer self.allocator.free(duped_elements);
+        for (duped_elements) |elem| {
+            self.retainObject(elem);
+        }
+        const array_ptr = try self.allocator.create(Object.Array);
+        errdefer self.allocator.destroy(array_ptr);
+        array_ptr.* = .{ .elements = duped_elements, .marked = false };
+        try self.arrays.append(self.allocator, array_ptr);
+        return .{ .array = array_ptr };
+    }
+
     // --- Reference counting: retain/release ---
 
     pub fn retainObject(self: *Self, obj: Object) void {
@@ -99,6 +120,7 @@ pub const Gc = struct {
         switch (obj) {
             .function => |f| f.ref_count += 1,
             .string => |s| s.ref_count += 1,
+            .array => |a| a.ref_count += 1,
             else => {},
         }
     }
@@ -112,6 +134,10 @@ pub const Gc = struct {
             .string => |s| {
                 s.ref_count -= 1;
                 if (s.ref_count == 0) self.freeString(s);
+            },
+            .array => |a| {
+                a.ref_count -= 1;
+                if (a.ref_count == 0) self.freeArray(a);
             },
             else => {},
         }
@@ -141,6 +167,16 @@ pub const Gc = struct {
         self.releaseEnvironment(function_obj.environment);
         function_obj.deinit();
         self.allocator.destroy(function_obj);
+    }
+
+    fn freeArray(self: *Self, array_obj: *Object.Array) void {
+        self.removeFromList(*Object.Array, &self.arrays, array_obj);
+        // Cascade: release each element
+        for (array_obj.elements) |elem| {
+            self.releaseObject(elem);
+        }
+        self.allocator.free(array_obj.elements);
+        self.allocator.destroy(array_obj);
     }
 
     fn freeEnvironment(self: *Self, env: *Environment) void {
@@ -220,6 +256,14 @@ pub const Gc = struct {
                 if (!isInList(*Object.String, self.strings.items, string_obj)) return;
                 string_obj.marked = true;
             },
+            .array => |array_obj| {
+                if (!isInList(*Object.Array, self.arrays.items, array_obj)) return;
+                if (array_obj.marked) return;
+                array_obj.marked = true;
+                for (array_obj.elements) |elem| {
+                    self.markObject(elem);
+                }
+            },
             else => {},
         }
     }
@@ -244,6 +288,7 @@ pub const Gc = struct {
         self.adjustSurvivingRefCounts();
         self.sweepList(*Object.String, &self.strings, sweepFreeString);
         self.sweepList(*Object.Function, &self.functions, sweepFreeFunction);
+        self.sweepList(*Object.Array, &self.arrays, sweepFreeArray);
         self.sweepList(*Environment, &self.environments, sweepFreeEnvironment);
     }
 
@@ -260,6 +305,25 @@ pub const Gc = struct {
             }
         }
 
+        for (self.arrays.items) |array_obj| {
+            if (!array_obj.marked) {
+                for (array_obj.elements) |elem| {
+                    switch (elem) {
+                        .string => |s| if (s.marked) {
+                            s.ref_count -|= 1;
+                        },
+                        .function => |f| if (f.marked) {
+                            f.ref_count -|= 1;
+                        },
+                        .array => |a| if (a.marked) {
+                            a.ref_count -|= 1;
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+
         for (self.environments.items) |env| {
             if (!env.marked) {
                 var iterator = env.storage.iterator();
@@ -270,6 +334,9 @@ pub const Gc = struct {
                         },
                         .string => |s| if (s.marked) {
                             s.ref_count -|= 1;
+                        },
+                        .array => |a| if (a.marked) {
+                            a.ref_count -|= 1;
                         },
                         else => {},
                     }
@@ -307,6 +374,11 @@ pub const Gc = struct {
         self.allocator.destroy(function_obj);
     }
 
+    fn sweepFreeArray(self: *Self, array_obj: *Object.Array) void {
+        self.allocator.free(array_obj.elements);
+        self.allocator.destroy(array_obj);
+    }
+
     fn sweepFreeEnvironment(self: *Self, env: *Environment) void {
         var iterator = env.storage.iterator();
         while (iterator.next()) |entry| {
@@ -326,6 +398,10 @@ pub const Gc = struct {
 
     pub fn trackedStringCount(self: *const Self) usize {
         return self.strings.items.len;
+    }
+
+    pub fn trackedArrayCount(self: *const Self) usize {
+        return self.arrays.items.len;
     }
 
     fn isInList(comptime T: type, list: []const T, needle: T) bool {

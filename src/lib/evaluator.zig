@@ -26,6 +26,7 @@ fn len(self: *Evaluator, args: []const Object) std.mem.Allocator.Error!Object {
     }
     return switch (args[0]) {
         .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
+        .array => |a| .{ .int = Object.Integer.init(@intCast(a.elements.len)) },
         else => return try self.errorObj("argument to `len` not supported, got {s}", .{args[0].typeName()}),
     };
 }
@@ -183,7 +184,46 @@ pub const Evaluator = struct {
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
             .string_literal => |string_literal| wrapResult(.value, try self.gc.allocString(string_literal.value)),
             .assign_expression => |*assign_exp| try self.evalAssignExpression(assign_exp),
+            .array_literal => |*arr| try self.evalArrayLiteral(arr),
+            .index_expression => |*idx| try self.evalIndexExpression(idx),
         };
+    }
+
+    fn evalArrayLiteral(self: *Self, arr: *const ExpressionType.ArrayLiteral) EvalError!EvalResult {
+        const elements = try self.gc.allocator.alloc(Object, arr.elements.len);
+        defer self.gc.allocator.free(elements);
+
+        for (arr.elements, 0..) |*elem, i| {
+            const result = try self.evalExpressionStatement(elem);
+            const value = unwrapValue(result) orelse return result;
+            elements[i] = value;
+        }
+
+        const array_obj = try self.gc.allocArray(elements);
+        return wrapResult(.value, array_obj);
+    }
+
+    fn evalIndexExpression(self: *Self, idx: *const ExpressionType.IndexExpression) EvalError!EvalResult {
+        const left_result = try self.evalExpressionStatement(idx.left);
+        const left = unwrapValue(left_result) orelse return left_result;
+
+        const index_result = try self.evalExpressionStatement(idx.index);
+        const index = unwrapValue(index_result) orelse return index_result;
+
+        switch (left) {
+            .array => |array_obj| {
+                switch (index) {
+                    .int => |int_obj| {
+                        if (int_obj.value < 0) return wrapResult(.value, NULL);
+                        const i: usize = @intCast(int_obj.value);
+                        if (i >= array_obj.elements.len) return wrapResult(.value, NULL);
+                        return wrapResult(.value, array_obj.elements[i]);
+                    },
+                    else => return wrapResult(.err, try self.errorObj("index operator not supported: {s}", .{index.typeName()})),
+                }
+            },
+            else => return wrapResult(.err, try self.errorObj("index operator not supported: {s}", .{left.typeName()})),
+        }
     }
 
     fn evalFunctionLiteral(self: *Self, function_literal: *const ExpressionType.FunctionLiteral) EvalError!EvalResult {

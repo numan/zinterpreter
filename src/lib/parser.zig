@@ -329,9 +329,13 @@ pub const Parser = struct {
     }
 
     fn parseCallArguments(self: *Self) ParseError!?[]ast.StatementType.ExpressionStatement {
+        return self.parseExpressionList(.rparen);
+    }
+
+    fn parseExpressionList(self: *Self, end_token: TokenType) ParseError!?[]ast.StatementType.ExpressionStatement {
         var list = std.ArrayList(ast.StatementType.ExpressionStatement).empty;
 
-        if (self.peek_token.token_type == .rparen) {
+        if (self.peek_token.token_type == end_token) {
             self.nextToken();
             return list.items;
         }
@@ -348,11 +352,31 @@ pub const Parser = struct {
             try list.append(self.allocator, arg);
         }
 
-        if (!try self.expectPeek(.rparen)) {
+        if (!try self.expectPeek(end_token)) {
             return null;
         }
 
         return try list.toOwnedSlice(self.allocator);
+    }
+
+    fn parseArrayLiteral(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        const elements = try self.parseExpressionList(.rbracket) orelse return null;
+        return ast.StatementType.ExpressionStatement.initArrayLiteral(current_token, elements);
+    }
+
+    fn parseIndexExpression(self: *Self, left: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        self.nextToken();
+        const index = try self.parseExpression(.lowest) orelse return null;
+        const index_ptr = try self.allocator.create(ast.StatementType.ExpressionStatement);
+        index_ptr.* = index;
+
+        if (!try self.expectPeek(.rbracket)) {
+            return null;
+        }
+
+        return ast.StatementType.ExpressionStatement.initIndexExpression(current_token, left, index_ptr);
     }
 
     fn parseAssignExpression(self: *Self, left: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
@@ -395,6 +419,7 @@ pub const Parser = struct {
             .plus, .minus => .sum,
             .slash, .asterisk => .product,
             .lparen => .call,
+            .lbracket => .index,
             else => .lowest,
         };
     }
@@ -418,6 +443,7 @@ pub const Parser = struct {
             inline .true, .false => Self.parseBooleanLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             .string => Self.parseStringLiteral,
+            .lbracket => Self.parseArrayLiteral,
             else => null,
         };
     }
@@ -427,6 +453,7 @@ pub const Parser = struct {
         return switch (token_type) {
             inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt => Self.parseInfixExpression,
             .lparen => Self.parseCallExpression,
+            .lbracket => Self.parseIndexExpression,
             .assign => Self.parseAssignExpression,
             else => null,
         };

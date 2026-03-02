@@ -1107,3 +1107,157 @@ test "new eval replaces previous error" {
     try testing.expect(evaluator.last_error != null);
     try testing.expectEqualStrings("argument to `len` not supported, got int", evaluator.last_error.?.msg);
 }
+
+test "eval array literals" {
+    const input = "[1, 2 * 2, 3 + 3]";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+
+    const array = switch (evaluated) {
+        .array => |a| a,
+        else => {
+            std.debug.print("Expected array. Got {s}.\n", .{evaluated.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(@as(usize, 3), array.elements.len);
+    try testIntegerObjectEqual(array.elements[0], 1);
+    try testIntegerObjectEqual(array.elements[1], 4);
+    try testIntegerObjectEqual(array.elements[2], 6);
+}
+
+test "eval index expressions" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: ?i64,
+    }{
+        .{ .input = "[1,2,3][0]", .expected = 1 },
+        .{ .input = "[1,2,3][1]", .expected = 2 },
+        .{ .input = "[1,2,3][2]", .expected = 3 },
+        .{ .input = "let i = 0; [1][i];", .expected = 1 },
+        .{ .input = "[1,2,3][1+1];", .expected = 3 },
+        .{ .input = "let myArray = [1,2,3]; myArray[2];", .expected = 3 },
+        .{ .input = "let myArray = [1,2,3]; myArray[0] + myArray[1] + myArray[2];", .expected = 6 },
+        .{ .input = "let myArray = [1,2,3]; let i = myArray[0]; myArray[i]", .expected = 2 },
+        .{ .input = "[1,2,3][3]", .expected = null },
+        .{ .input = "[1,2,3][-1]", .expected = null },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        if (case.expected) |expected| {
+            testIntegerObjectEqual(evaluated, expected) catch |err| {
+                std.debug.print("Got wrong value for input: {s}\n", .{case.input});
+                return err;
+            };
+        } else {
+            testNullObject(evaluated) catch |err| {
+                std.debug.print("Expected null for input: {s}\n", .{case.input});
+                return err;
+            };
+        }
+    }
+}
+
+test "eval empty array" {
+    const input = "[]";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+
+    const array = switch (evaluated) {
+        .array => |a| a,
+        else => {
+            std.debug.print("Expected array. Got {s}.\n", .{evaluated.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(@as(usize, 0), array.elements.len);
+}
+
+test "builtin len on arrays" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "len([1,2,3])", .expected = 3 },
+        .{ .input = "len([])", .expected = 0 },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testIntegerObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print("Got wrong value for input: {s}\n", .{case.input});
+            return err;
+        };
+    }
+}
+
+test "index expression errors" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected_message: []const u8,
+    }{
+        .{ .input = "true[0]", .expected_message = "index operator not supported: bool" },
+        .{ .input = "[1,2][true]", .expected_message = "index operator not supported: bool" },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
+            std.debug.print("Got wrong error for input: {s}\n", .{case.input});
+            return err;
+        };
+    }
+}

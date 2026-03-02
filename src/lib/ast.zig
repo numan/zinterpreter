@@ -95,6 +95,8 @@ pub const ExpressionType = union(enum) {
     call_expression: CallExpression,
     string_literal: StringLiteral,
     assign_expression: AssignExpression,
+    array_literal: ArrayLiteral,
+    index_expression: IndexExpression,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -185,6 +187,27 @@ pub const ExpressionType = union(enum) {
                     .value = value,
                 } };
             },
+            .array_literal => |arr| blk: {
+                const elements = try allocator.alloc(StatementType.ExpressionStatement, arr.elements.len);
+                for (arr.elements, 0..) |*elem, i| {
+                    elements[i] = try elem.clone(allocator);
+                }
+                break :blk .{ .array_literal = .{
+                    .token = try arr.token.clone(allocator),
+                    .elements = elements,
+                } };
+            },
+            .index_expression => |idx| blk: {
+                const left = try allocator.create(StatementType.ExpressionStatement);
+                left.* = try idx.left.clone(allocator);
+                const index = try allocator.create(StatementType.ExpressionStatement);
+                index.* = try idx.index.clone(allocator);
+                break :blk .{ .index_expression = .{
+                    .token = try idx.token.clone(allocator),
+                    .left = left,
+                    .index = index,
+                } };
+            },
         };
     }
 
@@ -253,6 +276,18 @@ pub const ExpressionType = union(enum) {
     pub fn initAssignExpression(tkn: Token, name: Identifier, value: *StatementType.ExpressionStatement) ExpressionType {
         return .{
             .assign_expression = AssignExpression.init(tkn, name, value),
+        };
+    }
+
+    pub fn initArrayLiteral(tkn: Token, elements: []StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .array_literal = ArrayLiteral.init(tkn, elements),
+        };
+    }
+
+    pub fn initIndexExpression(tkn: Token, left: *StatementType.ExpressionStatement, index: *StatementType.ExpressionStatement) ExpressionType {
+        return .{
+            .index_expression = IndexExpression.init(tkn, left, index),
         };
     }
 
@@ -506,6 +541,63 @@ pub const ExpressionType = union(enum) {
             return self.token.ch;
         }
     };
+
+    pub const ArrayLiteral = struct {
+        const Self = @This();
+        token: Token,
+        elements: []StatementType.ExpressionStatement,
+
+        pub fn init(tkn: Token, elements: []StatementType.ExpressionStatement) Self {
+            return .{
+                .token = tkn,
+                .elements = elements,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write("[");
+            for (self.elements, 0..) |*elem, i| {
+                try elem.expression.toString(writer);
+                if (i < self.elements.len - 1) {
+                    _ = try writer.write(", ");
+                }
+            }
+            _ = try writer.write("]");
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
+
+    pub const IndexExpression = struct {
+        const Self = @This();
+        token: Token,
+        left: *StatementType.ExpressionStatement,
+        index: *StatementType.ExpressionStatement,
+
+        pub fn init(tkn: Token, left: *StatementType.ExpressionStatement, index: *StatementType.ExpressionStatement) Self {
+            return .{
+                .token = tkn,
+                .left = left,
+                .index = index,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write("(");
+            try self.left.expression.toString(writer);
+            _ = try writer.write("[");
+            try self.index.expression.toString(writer);
+            _ = try writer.write("])");
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 };
 
 pub const Identifier = struct {
@@ -684,6 +776,18 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initArrayLiteral(tkn: Token, elements: []ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionType.initArrayLiteral(tkn, elements),
+            };
+        }
+
+        pub fn initIndexExpression(tkn: Token, left: *ExpressionStatement, index: *ExpressionStatement) Self {
+            return .{
+                .expression = ExpressionType.initIndexExpression(tkn, left, index),
+            };
+        }
+
         pub fn clone(self: *const ExpressionStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!ExpressionStatement {
             return .{ .expression = try self.expression.clone(allocator) };
         }
@@ -728,6 +832,18 @@ pub const StatementType = union(enum) {
                 .assign_expression => |*assign_exp| {
                     assign_exp.value.deinit(allocator);
                     allocator.destroy(assign_exp.value);
+                },
+                .array_literal => |*arr| {
+                    for (arr.elements) |*elem| {
+                        elem.deinit(allocator);
+                    }
+                    allocator.free(arr.elements);
+                },
+                .index_expression => |*idx| {
+                    idx.left.deinit(allocator);
+                    allocator.destroy(idx.left);
+                    idx.index.deinit(allocator);
+                    allocator.destroy(idx.index);
                 },
                 else => {},
             }
