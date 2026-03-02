@@ -22,6 +22,7 @@ pub const TokenType = enum {
     //Delimiters
     comma,
     semicolon,
+    colon,
     lparen,
     rparen,
     lbrace,
@@ -42,6 +43,7 @@ pub const TokenType = enum {
     const mappings: []const StringTokenKVPair = &.{
         .{ "=", .assign },
         .{ ";", .semicolon },
+        .{ ":", .colon },
         .{ ",", .comma },
         .{ "+", .plus },
         .{ "-", .minus },

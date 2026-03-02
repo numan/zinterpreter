@@ -1112,6 +1112,157 @@ test "parse index expression" {
     try testInfixExpression(&idx.index.expression, .{ .integer = 1 }, "+", .{ .integer = 1 });
 }
 
+test "parse hash literal with string keys" {
+    const input =
+        \\{"one": 1, "two": 2, "three": 3}
+    ;
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const hash = switch (expr_stmt.expression) {
+        .hash_literal => |val| val,
+        else => {
+            std.debug.print("Expected hash literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(3, hash.pairs.len);
+
+    const expected = [_]struct { []const u8, i64 }{
+        .{ "one", 1 },
+        .{ "two", 2 },
+        .{ "three", 3 },
+    };
+
+    for (expected, 0..) |exp, i| {
+        try testStringLiteral(&hash.pairs[i].key.expression, exp[0]);
+        try testIntegerLiteral(&hash.pairs[i].value.expression, exp[1]);
+    }
+}
+
+test "parse empty hash literal" {
+    const input = "{}";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const hash = switch (expr_stmt.expression) {
+        .hash_literal => |val| val,
+        else => {
+            std.debug.print("Expected hash literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(0, hash.pairs.len);
+}
+
+test "parse hash literal with expression values" {
+    const input =
+        \\{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}
+    ;
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const hash = switch (expr_stmt.expression) {
+        .hash_literal => |val| val,
+        else => {
+            std.debug.print("Expected hash literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(3, hash.pairs.len);
+
+    try testStringLiteral(&hash.pairs[0].key.expression, "one");
+    try testInfixExpression(&hash.pairs[0].value.expression, .{ .integer = 0 }, "+", .{ .integer = 1 });
+
+    try testStringLiteral(&hash.pairs[1].key.expression, "two");
+    try testInfixExpression(&hash.pairs[1].value.expression, .{ .integer = 10 }, "-", .{ .integer = 8 });
+
+    try testStringLiteral(&hash.pairs[2].key.expression, "three");
+    try testInfixExpression(&hash.pairs[2].value.expression, .{ .integer = 15 }, "/", .{ .integer = 5 });
+}
+
+test "parse hash literal with mixed key types" {
+    const input =
+        \\{1: "one", true: "yes", "name": "jimmy"}
+    ;
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const hash = switch (expr_stmt.expression) {
+        .hash_literal => |val| val,
+        else => {
+            std.debug.print("Expected hash literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(3, hash.pairs.len);
+
+    try testIntegerLiteral(&hash.pairs[0].key.expression, 1);
+    try testStringLiteral(&hash.pairs[0].value.expression, "one");
+
+    try testBooleanLiteral(&hash.pairs[1].key.expression, true);
+    try testStringLiteral(&hash.pairs[1].value.expression, "yes");
+
+    try testStringLiteral(&hash.pairs[2].key.expression, "name");
+    try testStringLiteral(&hash.pairs[2].value.expression, "jimmy");
+}
+
 test "assign expression precedence" {
     const cases = [_]struct {
         input: []const u8,

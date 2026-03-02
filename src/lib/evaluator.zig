@@ -186,6 +186,7 @@ pub const Evaluator = struct {
             .assign_expression => |*assign_exp| try self.evalAssignExpression(assign_exp),
             .array_literal => |*arr| try self.evalArrayLiteral(arr),
             .index_expression => |*idx| try self.evalIndexExpression(idx),
+            .hash_literal => @panic("TODO: eval hash literal"),
         };
     }
 

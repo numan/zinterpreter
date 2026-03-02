@@ -97,6 +97,7 @@ pub const ExpressionType = union(enum) {
     assign_expression: AssignExpression,
     array_literal: ArrayLiteral,
     index_expression: IndexExpression,
+    hash_literal: HashLiteral,
 
     pub fn toString(self: *const ExpressionType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -208,6 +209,19 @@ pub const ExpressionType = union(enum) {
                     .index = index,
                 } };
             },
+            .hash_literal => |hash| blk: {
+                const pairs = try allocator.alloc(HashLiteral.HashPair, hash.pairs.len);
+                for (hash.pairs, 0..) |*pair, i| {
+                    pairs[i] = .{
+                        .key = try pair.key.clone(allocator),
+                        .value = try pair.value.clone(allocator),
+                    };
+                }
+                break :blk .{ .hash_literal = .{
+                    .token = try hash.token.clone(allocator),
+                    .pairs = pairs,
+                } };
+            },
         };
     }
 
@@ -288,6 +302,12 @@ pub const ExpressionType = union(enum) {
     pub fn initIndexExpression(tkn: Token, left: *StatementType.ExpressionStatement, index: *StatementType.ExpressionStatement) ExpressionType {
         return .{
             .index_expression = IndexExpression.init(tkn, left, index),
+        };
+    }
+
+    pub fn initHashLiteral(tkn: Token, pairs: []HashLiteral.HashPair) ExpressionType {
+        return .{
+            .hash_literal = HashLiteral.init(tkn, pairs),
         };
     }
 
@@ -598,6 +618,43 @@ pub const ExpressionType = union(enum) {
             return self.token.ch;
         }
     };
+
+    pub const HashLiteral = struct {
+        const Self = @This();
+
+        pub const HashPair = struct {
+            key: StatementType.ExpressionStatement,
+            value: StatementType.ExpressionStatement,
+        };
+
+        token: Token,
+        pairs: []HashPair,
+
+        pub fn init(tkn: Token, pairs: []HashPair) Self {
+            return .{
+                .token = tkn,
+                .pairs = pairs,
+            };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write("{");
+            for (self.pairs, 0..) |*pair, i| {
+                try pair.key.expression.toString(writer);
+                _ = try writer.write(":");
+                try pair.value.expression.toString(writer);
+                if (i < self.pairs.len - 1) {
+                    _ = try writer.write(", ");
+                }
+            }
+            _ = try writer.write("}");
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
 };
 
 pub const Identifier = struct {
@@ -788,6 +845,12 @@ pub const StatementType = union(enum) {
             };
         }
 
+        pub fn initHashLiteral(tkn: Token, pairs: []ExpressionType.HashLiteral.HashPair) Self {
+            return .{
+                .expression = ExpressionType.initHashLiteral(tkn, pairs),
+            };
+        }
+
         pub fn clone(self: *const ExpressionStatement, allocator: std.mem.Allocator) std.mem.Allocator.Error!ExpressionStatement {
             return .{ .expression = try self.expression.clone(allocator) };
         }
@@ -844,6 +907,13 @@ pub const StatementType = union(enum) {
                     allocator.destroy(idx.left);
                     idx.index.deinit(allocator);
                     allocator.destroy(idx.index);
+                },
+                .hash_literal => |*hash| {
+                    for (hash.pairs) |*pair| {
+                        pair.key.deinit(allocator);
+                        pair.value.deinit(allocator);
+                    }
+                    allocator.free(hash.pairs);
                 },
                 else => {},
             }

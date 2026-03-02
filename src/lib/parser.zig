@@ -365,6 +365,37 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initArrayLiteral(current_token, elements);
     }
 
+    fn parseHashLiteral(self: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const current_token = self.current_token;
+        var list = std.ArrayList(ast.ExpressionType.HashLiteral.HashPair).empty;
+
+        while (self.peek_token.token_type != .rbrace) {
+            self.nextToken();
+            const key = try self.parseExpression(.lowest) orelse return null;
+
+            if (!try self.expectPeek(.colon)) {
+                return null;
+            }
+
+            self.nextToken();
+            const value = try self.parseExpression(.lowest) orelse return null;
+
+            try list.append(self.allocator, .{ .key = key, .value = value });
+
+            if (self.peek_token.token_type != .rbrace) {
+                if (!try self.expectPeek(.comma)) {
+                    return null;
+                }
+            }
+        }
+
+        if (!try self.expectPeek(.rbrace)) {
+            return null;
+        }
+
+        return ast.StatementType.ExpressionStatement.initHashLiteral(current_token, try list.toOwnedSlice(self.allocator));
+    }
+
     fn parseIndexExpression(self: *Self, left: *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement {
         const current_token = self.current_token;
         self.nextToken();
@@ -444,6 +475,7 @@ pub const Parser = struct {
             inline .bang, .minus => Self.parsePrefixOperator,
             .string => Self.parseStringLiteral,
             .lbracket => Self.parseArrayLiteral,
+            .lbrace => Self.parseHashLiteral,
             else => null,
         };
     }

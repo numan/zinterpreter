@@ -179,6 +179,7 @@ test "read tokens" {
         \\ "foo bar"
         \\ "foobar"
         \\ [1, 2]
+        \\ {"foo": "bar"}
     ;
 
     const tests = [_]struct { TokenType, []const u8 }{
@@ -262,6 +263,11 @@ test "read tokens" {
         .{ TokenType.comma, "," },
         .{ TokenType.int, "2" },
         .{ TokenType.rbracket, "]" },
+        .{ TokenType.lbrace, "{" },
+        .{ TokenType.string, "foo" },
+        .{ TokenType.colon, ":" },
+        .{ TokenType.string, "bar" },
+        .{ TokenType.rbrace, "}" },
         .{ TokenType.eof, "eof" },
     };
 
