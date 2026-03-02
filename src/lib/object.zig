@@ -13,9 +13,15 @@ pub const Object = union(enum) {
     function: *Function,
     string: *String,
     array: *Array,
+    hash: *Hash,
     builtin: Builtin,
 
     const Self = @This();
+
+    pub const HashKey = struct {
+        obj_type: enum { int, bool, string },
+        value: u64,
+    };
 
     pub const Builtin = struct {
         function: BuiltinFnType,
@@ -57,6 +63,10 @@ pub const Object = union(enum) {
             };
         }
 
+        pub fn hashKey(self: *const String) HashKey {
+            return .{ .obj_type = .string, .value = std.hash.Fnv1a_64.hash(self.value) };
+        }
+
         pub fn inspect(self: *const Object.String, writer: *std.Io.Writer) !void {
             try writer.writeAll(self.value);
             try writer.flush();
@@ -72,6 +82,10 @@ pub const Object = union(enum) {
             };
         }
 
+        pub fn hashKey(self: *const Integer) HashKey {
+            return .{ .obj_type = .int, .value = @bitCast(self.value) };
+        }
+
         pub fn inspect(self: *const Object.Integer, writer: *std.Io.Writer) !void {
             try writer.print("{d}", .{self.value});
             try writer.flush();
@@ -85,6 +99,10 @@ pub const Object = union(enum) {
             return Boolean{
                 .value = value,
             };
+        }
+
+        pub fn hashKey(self: *const Boolean) HashKey {
+            return .{ .obj_type = .bool, .value = if (self.value) 1 else 0 };
         }
 
         pub fn inspect(self: *const Object.Boolean, writer: *std.Io.Writer) !void {
@@ -164,6 +182,41 @@ pub const Object = union(enum) {
             try writer.flush();
         }
     };
+
+    pub const HashPair = struct {
+        key: Object,
+        value: Object,
+    };
+
+    pub const Hash = struct {
+        pairs: std.AutoHashMap(HashKey, HashPair),
+        marked: bool = false,
+        ref_count: usize = 0,
+
+        pub fn inspect(self: *const Object.Hash, writer: *std.Io.Writer) !void {
+            try writer.writeAll("{");
+            var iterator = self.pairs.iterator();
+            var i: usize = 0;
+            while (iterator.next()) |entry| {
+                try entry.value_ptr.key.inspect(writer);
+                try writer.writeAll(": ");
+                try entry.value_ptr.value.inspect(writer);
+                if (i < self.pairs.count() - 1) try writer.writeAll(", ");
+                i += 1;
+            }
+            try writer.writeAll("}");
+            try writer.flush();
+        }
+    };
+
+    pub fn hashKey(self: *const Self) ?HashKey {
+        return switch (self.*) {
+            .int => |obj| obj.hashKey(),
+            .bool => |obj| obj.hashKey(),
+            .string => |obj| obj.hashKey(),
+            else => null,
+        };
+    }
 
     pub fn typeName(self: *const Self) []const u8 {
         return @tagName(self.*);

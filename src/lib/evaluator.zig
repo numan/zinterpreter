@@ -186,7 +186,7 @@ pub const Evaluator = struct {
             .assign_expression => |*assign_exp| try self.evalAssignExpression(assign_exp),
             .array_literal => |*arr| try self.evalArrayLiteral(arr),
             .index_expression => |*idx| try self.evalIndexExpression(idx),
-            .hash_literal => @panic("TODO: eval hash literal"),
+            .hash_literal => |*hash_lit| try self.evalHashLiteral(hash_lit),
         };
     }
 
@@ -202,6 +202,35 @@ pub const Evaluator = struct {
 
         const array_obj = try self.gc.allocArray(elements);
         return wrapResult(.value, array_obj);
+    }
+
+    fn evalHashLiteral(self: *Self, hash_lit: *const ExpressionType.HashLiteral) EvalError!EvalResult {
+        var pairs = std.AutoHashMap(Object.HashKey, Object.HashPair).init(self.gc.allocator);
+        errdefer pairs.deinit();
+
+        for (hash_lit.pairs) |*pair| {
+            const key_result = try self.evalExpressionStatement(&pair.key);
+            const key = unwrapValue(key_result) orelse {
+                pairs.deinit();
+                return key_result;
+            };
+
+            const hash_key = key.hashKey() orelse {
+                pairs.deinit();
+                return wrapResult(.err, try self.errorObj("unusable as hash key: {s}", .{key.typeName()}));
+            };
+
+            const value_result = try self.evalExpressionStatement(&pair.value);
+            const value = unwrapValue(value_result) orelse {
+                pairs.deinit();
+                return value_result;
+            };
+
+            pairs.put(hash_key, .{ .key = key, .value = value }) catch |e| return e;
+        }
+
+        const hash_obj = try self.gc.allocHash(pairs);
+        return wrapResult(.value, hash_obj);
     }
 
     fn evalIndexExpression(self: *Self, idx: *const ExpressionType.IndexExpression) EvalError!EvalResult {
@@ -222,6 +251,15 @@ pub const Evaluator = struct {
                     },
                     else => return wrapResult(.err, try self.errorObj("index operator not supported: {s}", .{index.typeName()})),
                 }
+            },
+            .hash => |hash_obj| {
+                const hash_key = index.hashKey() orelse {
+                    return wrapResult(.err, try self.errorObj("unusable as hash key: {s}", .{index.typeName()}));
+                };
+                if (hash_obj.pairs.get(hash_key)) |pair| {
+                    return wrapResult(.value, pair.value);
+                }
+                return wrapResult(.value, NULL);
             },
             else => return wrapResult(.err, try self.errorObj("index operator not supported: {s}", .{left.typeName()})),
         }

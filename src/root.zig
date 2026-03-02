@@ -21,4 +21,5 @@ comptime {
     _ = @import("lib/parser_test.zig");
     _ = @import("lib/evaluator_test.zig");
     _ = @import("lib/gc_test.zig");
+    _ = @import("lib/object_test.zig");
 }

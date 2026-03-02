@@ -11,6 +11,7 @@ pub const Gc = struct {
     functions: std.ArrayList(*Object.Function) = .{},
     strings: std.ArrayList(*Object.String) = .{},
     arrays: std.ArrayList(*Object.Array) = .{},
+    hashes: std.ArrayList(*Object.Hash) = .{},
 
     const Self = @This();
 
@@ -21,6 +22,7 @@ pub const Gc = struct {
             .functions = .{},
             .strings = .{},
             .arrays = .{},
+            .hashes = .{},
         };
     }
 
@@ -42,6 +44,12 @@ pub const Gc = struct {
             self.allocator.destroy(array_obj);
         }
         self.arrays.deinit(self.allocator);
+
+        for (self.hashes.items) |hash_obj| {
+            hash_obj.pairs.deinit();
+            self.allocator.destroy(hash_obj);
+        }
+        self.hashes.deinit(self.allocator);
 
         for (self.environments.items) |env| {
             var iterator = env.storage.iterator();
@@ -113,6 +121,19 @@ pub const Gc = struct {
         return .{ .array = array_ptr };
     }
 
+    pub fn allocHash(self: *Self, pairs: std.AutoHashMap(Object.HashKey, Object.HashPair)) !Object {
+        const hash_ptr = try self.allocator.create(Object.Hash);
+        errdefer self.allocator.destroy(hash_ptr);
+        hash_ptr.* = .{ .pairs = pairs, .marked = false };
+        var iterator = hash_ptr.pairs.iterator();
+        while (iterator.next()) |entry| {
+            self.retainObject(entry.value_ptr.key);
+            self.retainObject(entry.value_ptr.value);
+        }
+        try self.hashes.append(self.allocator, hash_ptr);
+        return .{ .hash = hash_ptr };
+    }
+
     // --- Reference counting: retain/decrement ---
 
     pub fn retainObject(self: *Self, obj: Object) void {
@@ -121,6 +142,7 @@ pub const Gc = struct {
             .function => |f| f.ref_count += 1,
             .string => |s| s.ref_count += 1,
             .array => |a| a.ref_count += 1,
+            .hash => |h| h.ref_count += 1,
             else => {},
         }
     }
@@ -131,6 +153,7 @@ pub const Gc = struct {
             .function => |f| f.ref_count -= 1,
             .string => |s| s.ref_count -= 1,
             .array => |a| a.ref_count -= 1,
+            .hash => |h| h.ref_count -= 1,
             else => {},
         }
     }
@@ -205,6 +228,16 @@ pub const Gc = struct {
                     self.markObject(elem);
                 }
             },
+            .hash => |hash_obj| {
+                if (!isInList(*Object.Hash, self.hashes.items, hash_obj)) return;
+                if (hash_obj.marked) return;
+                hash_obj.marked = true;
+                var iterator = hash_obj.pairs.iterator();
+                while (iterator.next()) |entry| {
+                    self.markObject(entry.value_ptr.key);
+                    self.markObject(entry.value_ptr.value);
+                }
+            },
             else => {},
         }
     }
@@ -230,6 +263,7 @@ pub const Gc = struct {
         self.sweepList(*Object.String, &self.strings, sweepFreeString);
         self.sweepList(*Object.Function, &self.functions, sweepFreeFunction);
         self.sweepList(*Object.Array, &self.arrays, sweepFreeArray);
+        self.sweepList(*Object.Hash, &self.hashes, sweepFreeHash);
         self.sweepList(*Environment, &self.environments, sweepFreeEnvironment);
     }
 
@@ -259,8 +293,21 @@ pub const Gc = struct {
                         .array => |a| if (a.marked) {
                             a.ref_count -|= 1;
                         },
+                        .hash => |h| if (h.marked) {
+                            h.ref_count -|= 1;
+                        },
                         else => {},
                     }
+                }
+            }
+        }
+
+        for (self.hashes.items) |hash_obj| {
+            if (!hash_obj.marked) {
+                var iterator = hash_obj.pairs.iterator();
+                while (iterator.next()) |entry| {
+                    self.adjustRefForDying(entry.value_ptr.key);
+                    self.adjustRefForDying(entry.value_ptr.value);
                 }
             }
         }
@@ -278,6 +325,9 @@ pub const Gc = struct {
                         },
                         .array => |a| if (a.marked) {
                             a.ref_count -|= 1;
+                        },
+                        .hash => |h| if (h.marked) {
+                            h.ref_count -|= 1;
                         },
                         else => {},
                     }
@@ -320,6 +370,11 @@ pub const Gc = struct {
         self.allocator.destroy(array_obj);
     }
 
+    fn sweepFreeHash(self: *Self, hash_obj: *Object.Hash) void {
+        hash_obj.pairs.deinit();
+        self.allocator.destroy(hash_obj);
+    }
+
     fn sweepFreeEnvironment(self: *Self, env: *Environment) void {
         var iterator = env.storage.iterator();
         while (iterator.next()) |entry| {
@@ -343,6 +398,29 @@ pub const Gc = struct {
 
     pub fn trackedArrayCount(self: *const Self) usize {
         return self.arrays.items.len;
+    }
+
+    pub fn trackedHashCount(self: *const Self) usize {
+        return self.hashes.items.len;
+    }
+
+    fn adjustRefForDying(self: *Self, obj: Object) void {
+        _ = self;
+        switch (obj) {
+            .string => |s| if (s.marked) {
+                s.ref_count -|= 1;
+            },
+            .function => |f| if (f.marked) {
+                f.ref_count -|= 1;
+            },
+            .array => |a| if (a.marked) {
+                a.ref_count -|= 1;
+            },
+            .hash => |h| if (h.marked) {
+                h.ref_count -|= 1;
+            },
+            else => {},
+        }
     }
 
     fn isInList(comptime T: type, list: []const T, needle: T) bool {

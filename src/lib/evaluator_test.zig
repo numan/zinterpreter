@@ -1234,6 +1234,143 @@ test "builtin len on arrays" {
     }
 }
 
+test "eval hash literal" {
+    const input =
+        \\{"one": 10 - 9, "two": 10 - 8, "thr" + "ee": 6 / 2}
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+
+    const hash = switch (evaluated) {
+        .hash => |h| h,
+        else => {
+            std.debug.print("Expected hash. Got {s}.\n", .{evaluated.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(@as(u32, 3), hash.pairs.count());
+
+    // Check via integer values: iterate and collect
+    var found_one = false;
+    var found_two = false;
+    var found_three = false;
+    var iterator = hash.pairs.iterator();
+    while (iterator.next()) |entry| {
+        const val = switch (entry.value_ptr.value) {
+            .int => |i| i.value,
+            else => continue,
+        };
+        if (val == 1) found_one = true;
+        if (val == 2) found_two = true;
+        if (val == 3) found_three = true;
+    }
+    try testing.expect(found_one);
+    try testing.expect(found_two);
+    try testing.expect(found_three);
+}
+
+test "eval empty hash literal" {
+    const input = "{}";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+
+    const hash = switch (evaluated) {
+        .hash => |h| h,
+        else => {
+            std.debug.print("Expected hash. Got {s}.\n", .{evaluated.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(@as(u32, 0), hash.pairs.count());
+}
+
+test "eval hash index expressions" {
+    const ExpectedValue = union(enum) {
+        int: i64,
+        null_val: void,
+    };
+
+    const tests = [_]struct {
+        input: []const u8,
+        expected: ExpectedValue,
+    }{
+        .{ .input = "{\"foo\": 5}[\"foo\"]", .expected = .{ .int = 5 } },
+        .{ .input = "{\"foo\": 5}[\"bar\"]", .expected = .{ .null_val = {} } },
+        .{ .input = "let key = \"foo\"; {\"foo\": 5}[key]", .expected = .{ .int = 5 } },
+        .{ .input = "{}[\"foo\"]", .expected = .{ .null_val = {} } },
+        .{ .input = "{5: 5}[5]", .expected = .{ .int = 5 } },
+        .{ .input = "{true: 5}[true]", .expected = .{ .int = 5 } },
+        .{ .input = "{false: 5}[false]", .expected = .{ .int = 5 } },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var evaluator = Evaluator.init(env, &collector);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        switch (case.expected) {
+            .int => |expected_int| {
+                testIntegerObjectEqual(evaluated, expected_int) catch |err| {
+                    std.debug.print("Got wrong value for input: {s}\n", .{case.input});
+                    return err;
+                };
+            },
+            .null_val => {
+                testNullObject(evaluated) catch |err| {
+                    std.debug.print("Expected null for input: {s}\n", .{case.input});
+                    return err;
+                };
+            },
+        }
+    }
+}
+
+test "unusable hash key error" {
+    const input = "{fn(x){x}: 1}";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var evaluator = Evaluator.init(env, &collector);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval(input, arena.allocator(), &evaluator);
+    try testErrorObjectMessageEqual(evaluated, "unusable as hash key: function");
+}
+
 test "index expression errors" {
     const tests = [_]struct {
         input: []const u8,
