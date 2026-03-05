@@ -14,6 +14,7 @@ comptime {
     _ = @import("lib/object.zig");
     _ = @import("lib/evaluator.zig");
     _ = @import("lib/gc.zig");
+    _ = @import("lib/code.zig");
 }
 
 // All the tests go here
@@ -22,4 +23,5 @@ comptime {
     _ = @import("lib/evaluator_test.zig");
     _ = @import("lib/gc_test.zig");
     _ = @import("lib/object_test.zig");
+    _ = @import("lib/compiler_test.zig");
 }

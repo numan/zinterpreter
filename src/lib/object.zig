@@ -172,7 +172,7 @@ pub const Object = union(enum) {
         marked: bool = false,
         ref_count: usize = 0,
 
-        pub fn inspect(self: *const Object.Array, writer: *std.Io.Writer) !void {
+        pub fn inspect(self: *const Object.Array, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             try writer.writeAll("[");
             for (self.elements, 0..) |*elem, i| {
                 try elem.inspect(writer);
@@ -193,7 +193,7 @@ pub const Object = union(enum) {
         marked: bool = false,
         ref_count: usize = 0,
 
-        pub fn inspect(self: *const Object.Hash, writer: *std.Io.Writer) !void {
+        pub fn inspect(self: *const Object.Hash, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             try writer.writeAll("{");
             var iterator = self.pairs.iterator();
             var i: usize = 0;
@@ -222,7 +222,7 @@ pub const Object = union(enum) {
         return @tagName(self.*);
     }
 
-    pub fn inspect(self: *const Self, writer: *std.Io.Writer) !void {
+    pub fn inspect(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
             inline else => |obj| {
                 try obj.inspect(writer);
