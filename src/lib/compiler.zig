@@ -74,7 +74,7 @@ pub const Compiler = struct {
         const int_obj = try alloc.create(Object);
         int_obj.* = .{ .int = Object.Integer.init(int_literal.value) };
         const index = try self.addConstant(int_obj);
-        _ = try self.emit(.op_constant, &.{index});
+        _ = try self.emit(.constant, &.{index});
     }
 
     fn emit(self: *Self, op: code.Opcode, operands: []const usize) !usize {

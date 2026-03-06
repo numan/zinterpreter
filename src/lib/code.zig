@@ -4,7 +4,7 @@ const testing = std.testing;
 pub const Instructions = []const u8;
 
 pub const Opcode = enum(u8) {
-    op_constant,
+    constant,
 };
 
 pub const Definition = struct {
@@ -13,7 +13,7 @@ pub const Definition = struct {
 };
 
 const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
-    .op_constant = .{ .name = "OpConstant", .operand_widths = &.{2} },
+    .constant = .{ .name = "OpConstant", .operand_widths = &.{2} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -124,7 +124,7 @@ test "read operands" {
         op: Opcode,
         operands: []const usize,
     }{
-        .{ .op = .op_constant, .operands = &.{65535} },
+        .{ .op = .constant, .operands = &.{65535} },
     };
 
     for (tests) |tt| {
@@ -143,9 +143,9 @@ test "read operands" {
 
 test "instructions string" {
     const instructions_list = [_][]const u8{
-        try make(testing.allocator, .op_constant, &.{1}),
-        try make(testing.allocator, .op_constant, &.{2}),
-        try make(testing.allocator, .op_constant, &.{65535}),
+        try make(testing.allocator, .constant, &.{1}),
+        try make(testing.allocator, .constant, &.{2}),
+        try make(testing.allocator, .constant, &.{65535}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -175,9 +175,9 @@ test "make" {
         expected: []const u8,
     }{
         .{
-            .op = .op_constant,
+            .op = .constant,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.op_constant), 255, 254 },
+            .expected = &.{ @intFromEnum(Opcode.constant), 255, 254 },
         },
     };
 

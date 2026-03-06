@@ -78,9 +78,9 @@ fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCas
 test "integer arithmetic" {
     const allocator = testing.allocator;
 
-    const op_constant_0 = try code.make(allocator, .op_constant, &.{0});
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
     defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .op_constant, &.{1});
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
     defer allocator.free(op_constant_1);
 
     const tests = [_]CompilerTestCase{
