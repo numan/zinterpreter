@@ -9,9 +9,14 @@ const Vm = @import("./vm.zig").Vm;
 
 const Compiler = compiler.Compiler;
 
+const Expected = union(enum) {
+    int: i64,
+    boolean: bool,
+};
+
 const VmTestCase = struct {
     input: []const u8,
-    expected: i64,
+    expected: Expected,
 };
 
 fn parse(allocator: std.mem.Allocator, input: []const u8) !*@import("./ast.zig").Program {
@@ -31,8 +36,22 @@ fn testIntegerObject(expected: i64, obj: Object) !void {
     try testing.expectEqual(expected, integer.value);
 }
 
-fn testExpectedObject(expected: i64, obj: Object) !void {
-    try testIntegerObject(expected, obj);
+fn testBooleanObject(expected: bool, obj: Object) !void {
+    const boolean = switch (obj) {
+        .bool => |value| value,
+        else => {
+            std.debug.print("object is not Boolean. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqual(expected, boolean.value);
+}
+
+fn testExpectedObject(expected: Expected, obj: Object) !void {
+    switch (expected) {
+        .int => |val| try testIntegerObject(val, obj),
+        .boolean => |val| try testBooleanObject(val, obj),
+    }
 }
 
 fn runVmTests(tests: []const VmTestCase) !void {
@@ -64,18 +83,27 @@ fn runVmTests(tests: []const VmTestCase) !void {
 
 test "integer arithmetic" {
     const tests = [_]VmTestCase{
-        .{ .input = "1", .expected = 1 },
-        .{ .input = "2", .expected = 2 },
-        .{ .input = "1 + 2", .expected = 3 },
-        .{ .input = "1 - 2", .expected = -1 },
-        .{ .input = "1 * 2", .expected = 2 },
-        .{ .input = "4 / 2", .expected = 2 },
-        .{ .input = "50 / 2 * 2 + 10 - 5", .expected = 55 },
-        .{ .input = "5 + 5 + 5 + 5 - 10", .expected = 10 },
-        .{ .input = "2 * 2 * 2 * 2 * 2", .expected = 32 },
-        .{ .input = "5 * 2 + 10", .expected = 20 },
-        .{ .input = "5 + 2 * 10", .expected = 25 },
-        .{ .input = "5 * (2 + 10)", .expected = 60 },
+        .{ .input = "1", .expected = .{ .int = 1 } },
+        .{ .input = "2", .expected = .{ .int = 2 } },
+        .{ .input = "1 + 2", .expected = .{ .int = 3 } },
+        .{ .input = "1 - 2", .expected = .{ .int = -1 } },
+        .{ .input = "1 * 2", .expected = .{ .int = 2 } },
+        .{ .input = "4 / 2", .expected = .{ .int = 2 } },
+        .{ .input = "50 / 2 * 2 + 10 - 5", .expected = .{ .int = 55 } },
+        .{ .input = "5 + 5 + 5 + 5 - 10", .expected = .{ .int = 10 } },
+        .{ .input = "2 * 2 * 2 * 2 * 2", .expected = .{ .int = 32 } },
+        .{ .input = "5 * 2 + 10", .expected = .{ .int = 20 } },
+        .{ .input = "5 + 2 * 10", .expected = .{ .int = 25 } },
+        .{ .input = "5 * (2 + 10)", .expected = .{ .int = 60 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "boolean expressions" {
+    const tests = [_]VmTestCase{
+        .{ .input = "true", .expected = .{ .boolean = true } },
+        .{ .input = "false", .expected = .{ .boolean = false } },
     };
 
     try runVmTests(&tests);

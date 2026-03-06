@@ -6,6 +6,9 @@ const object = @import("object.zig");
 const Object = object.Object;
 const Bytecode = compiler.Bytecode;
 
+const True = Object{ .bool = Object.Boolean.init(true) };
+const False = Object{ .bool = Object.Boolean.init(false) };
+
 const stack_size = 2048;
 
 const Errors = error{
@@ -70,6 +73,12 @@ pub const Vm = struct {
                     };
 
                     try self.push(.{ .int = Object.Integer.init(result) });
+                },
+                .op_true => {
+                    try self.push(True);
+                },
+                .op_false => {
+                    try self.push(False);
                 },
                 .pop => {
                     _ = try self.pop();

@@ -72,6 +72,7 @@ pub const Compiler = struct {
     fn evalExpression(self: *Self, expression: *const ExpressionType) !void {
         return switch (expression.*) {
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
+            .boolean_literal => self.evalBooleanLiteral(&expression.boolean_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
             else => Error.UnsupportedNodeType,
         };
@@ -81,6 +82,14 @@ pub const Compiler = struct {
         const int_obj: Object = .{ .int = Object.Integer.init(int_literal.value) };
         const index = try self.addConstant(int_obj);
         _ = try self.emit(.constant, &.{index});
+    }
+
+    fn evalBooleanLiteral(self: *Self, bool_literal: *const ExpressionType.BooleanLiteral) !void {
+        if (bool_literal.value) {
+            _ = try self.emit(.op_true, &.{});
+        } else {
+            _ = try self.emit(.op_false, &.{});
+        }
     }
 
     fn evalInfixExpression(self: *Self, infix_expression: *const ExpressionType.InfixExpression) !void {

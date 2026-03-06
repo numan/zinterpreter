@@ -10,6 +10,8 @@ pub const Opcode = enum(u8) {
     mul,
     div,
     pop,
+    op_true,
+    op_false,
 };
 
 pub const Definition = struct {
@@ -24,6 +26,8 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .mul = .{ .name = "OpMul", .operand_widths = &.{} },
     .div = .{ .name = "OpDiv", .operand_widths = &.{} },
     .pop = .{ .name = "OpPop", .operand_widths = &.{} },
+    .op_true = .{ .name = "OpTrue", .operand_widths = &.{} },
+    .op_false = .{ .name = "OpFalse", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -138,6 +142,8 @@ test "read operands" {
         .{ .op = .sub, .operands = &.{} },
         .{ .op = .mul, .operands = &.{} },
         .{ .op = .div, .operands = &.{} },
+        .{ .op = .op_true, .operands = &.{} },
+        .{ .op = .op_false, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -229,6 +235,20 @@ test "make" {
             .operands = &.{},
             .expected = &.{
                 @intFromEnum(Opcode.pop),
+            },
+        },
+        .{
+            .op = .op_true,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.op_true),
+            },
+        },
+        .{
+            .op = .op_false,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.op_false),
             },
         },
     };

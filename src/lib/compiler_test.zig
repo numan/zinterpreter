@@ -148,3 +148,45 @@ test "integer arithmetic" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "boolean expressions" {
+    const allocator = testing.allocator;
+
+    const op_true = try code.make(allocator, .op_true, &.{});
+    defer allocator.free(op_true);
+    const op_false = try code.make(allocator, .op_false, &.{});
+    defer allocator.free(op_false);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "true",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_true,
+                op_pop,
+            },
+        },
+        .{
+            .input = "false",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_false,
+                op_pop,
+            },
+        },
+        .{
+            .input = "true; false",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_true,
+                op_pop,
+                op_false,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
