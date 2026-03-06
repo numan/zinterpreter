@@ -70,9 +70,7 @@ pub const Compiler = struct {
     }
 
     fn evalIntegerLiteral(self: *Self, int_literal: *const ExpressionType.IntegerLiteral) !void {
-        const alloc = self.allocator();
-        const int_obj = try alloc.create(Object);
-        int_obj.* = .{ .int = Object.Integer.init(int_literal.value) };
+        const int_obj: Object = .{ .int = Object.Integer.init(int_literal.value) };
         const index = try self.addConstant(int_obj);
         _ = try self.emit(.constant, &.{index});
     }
@@ -91,9 +89,9 @@ pub const Compiler = struct {
         return new_instuction_position;
     }
 
-    fn addConstant(self: *Self, obj: *const Object) !usize {
+    fn addConstant(self: *Self, obj: Object) !usize {
         const alloc = self.allocator();
-        try self.constants.append(alloc, obj.*);
+        try self.constants.append(alloc, obj);
         return self.constants.items.len - 1;
     }
 
