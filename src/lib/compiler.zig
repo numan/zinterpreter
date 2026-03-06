@@ -89,6 +89,9 @@ pub const Compiler = struct {
 
         switch (infix_expression.token.token_type) {
             .plus => _ = try self.emit(.add, &.{}),
+            .minus => _ = try self.emit(.sub, &.{}),
+            .asterisk => _ = try self.emit(.mul, &.{}),
+            .slash => _ = try self.emit(.div, &.{}),
             else => return Error.OperationNotSupported,
         }
     }

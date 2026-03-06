@@ -84,6 +84,12 @@ test "integer arithmetic" {
     defer allocator.free(op_constant_1);
     const op_add = try code.make(allocator, .add, &.{});
     defer allocator.free(op_add);
+    const op_sub = try code.make(allocator, .sub, &.{});
+    defer allocator.free(op_sub);
+    const op_mul = try code.make(allocator, .mul, &.{});
+    defer allocator.free(op_mul);
+    const op_div = try code.make(allocator, .div, &.{});
+    defer allocator.free(op_div);
     const op_pop = try code.make(allocator, .pop, &.{});
     defer allocator.free(op_pop);
 
@@ -95,6 +101,36 @@ test "integer arithmetic" {
                 op_constant_0,
                 op_constant_1,
                 op_add,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 - 2",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_sub,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 * 2",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_mul,
+                op_pop,
+            },
+        },
+        .{
+            .input = "6 / 3",
+            .expected_constants = &.{ 6, 3 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_div,
                 op_pop,
             },
         },

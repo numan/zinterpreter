@@ -48,7 +48,7 @@ pub const Vm = struct {
                     ip += 2;
                     try self.push(self.constants[const_index]);
                 },
-                .add => {
+                .add, .sub, .mul, .div => {
                     const right = try self.pop();
                     const left = try self.pop();
 
@@ -61,7 +61,15 @@ pub const Vm = struct {
                         else => return Errors.UnknownOpcode,
                     };
 
-                    try self.push(.{ .int = Object.Integer.init(left_int + right_int) });
+                    const result = switch (op) {
+                        .add => left_int + right_int,
+                        .sub => left_int - right_int,
+                        .mul => left_int * right_int,
+                        .div => @divTrunc(left_int, right_int),
+                        else => unreachable,
+                    };
+
+                    try self.push(.{ .int = Object.Integer.init(result) });
                 },
                 .pop => {
                     _ = try self.pop();

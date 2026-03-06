@@ -6,6 +6,9 @@ pub const Instructions = []const u8;
 pub const Opcode = enum(u8) {
     constant,
     add,
+    sub,
+    mul,
+    div,
     pop,
 };
 
@@ -17,6 +20,9 @@ pub const Definition = struct {
 const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .constant = .{ .name = "OpConstant", .operand_widths = &.{2} },
     .add = .{ .name = "OpAdd", .operand_widths = &.{} },
+    .sub = .{ .name = "OpSub", .operand_widths = &.{} },
+    .mul = .{ .name = "OpMul", .operand_widths = &.{} },
+    .div = .{ .name = "OpDiv", .operand_widths = &.{} },
     .pop = .{ .name = "OpPop", .operand_widths = &.{} },
 });
 
@@ -129,6 +135,9 @@ test "read operands" {
     }{
         .{ .op = .constant, .operands = &.{65535} },
         .{ .op = .add, .operands = &.{} },
+        .{ .op = .sub, .operands = &.{} },
+        .{ .op = .mul, .operands = &.{} },
+        .{ .op = .div, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -192,6 +201,27 @@ test "make" {
             .operands = &.{},
             .expected = &.{
                 @intFromEnum(Opcode.add),
+            },
+        },
+        .{
+            .op = .sub,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.sub),
+            },
+        },
+        .{
+            .op = .mul,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.mul),
+            },
+        },
+        .{
+            .op = .div,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.div),
             },
         },
         .{
