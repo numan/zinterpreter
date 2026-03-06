@@ -69,7 +69,7 @@ pub const ReadOperandsResult = struct {
     }
 };
 
-pub fn readUint16(ins: Instructions) u16 {
+pub inline fn readUint16(ins: Instructions) u16 {
     return std.mem.readInt(u16, ins[0..2], .big);
 }
 
