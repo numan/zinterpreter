@@ -9,6 +9,11 @@ const Program = ast.Program;
 const StatementType = ast.StatementType;
 const ExpressionType = ast.ExpressionType;
 
+const Error = error{
+    UnsupportedNodeType,
+    OperationNotSupported,
+} || std.mem.Allocator.Error;
+
 pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
     instructions: std.ArrayList(u8),
@@ -34,7 +39,7 @@ pub const Compiler = struct {
         self.arena.deinit();
     }
 
-    pub fn compile(self: *Self, node: anytype) std.mem.Allocator.Error!void {
+    pub fn compile(self: *Self, node: anytype) Error!void {
         return switch (@TypeOf(node)) {
             *Program, *const Program => self.evalProgram(node),
             *StatementType, *const StatementType => self.evalStatement(node),
@@ -53,7 +58,7 @@ pub const Compiler = struct {
     fn evalStatement(self: *Self, statement: *const StatementType) !void {
         return switch (statement.*) {
             .expression => |*expression_statement| try self.compile(expression_statement),
-            else => unreachable,
+            else => Error.UnsupportedNodeType,
         };
     }
 
@@ -65,7 +70,7 @@ pub const Compiler = struct {
         return switch (expression.*) {
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
-            else => unreachable,
+            else => Error.UnsupportedNodeType,
         };
     }
 
@@ -81,7 +86,7 @@ pub const Compiler = struct {
 
         switch (infix_expression.token.token_type) {
             .plus => _ = try self.emit(.add, &.{}),
-            else => unreachable,
+            else => return Error.OperationNotSupported,
         }
     }
 
