@@ -57,7 +57,10 @@ pub const Compiler = struct {
 
     fn evalStatement(self: *Self, statement: *const StatementType) !void {
         return switch (statement.*) {
-            .expression => |*expression_statement| try self.compile(expression_statement),
+            .expression => |*expression_statement| {
+                try self.compile(expression_statement);
+                _ = try self.emit(.pop, &.{});
+            },
             else => Error.UnsupportedNodeType,
         };
     }

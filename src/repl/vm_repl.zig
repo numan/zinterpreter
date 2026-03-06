@@ -66,7 +66,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
                 continue;
             };
 
-            const stack_top = vm.stackTop() orelse {
+            const stack_top = vm.lastPoppedStackElem() orelse {
                 try stdout.writeAll("null");
                 try stdout.writeAll("\n");
                 continue;

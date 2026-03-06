@@ -33,6 +33,11 @@ pub const Vm = struct {
         return self.stack[self.sp - 1];
     }
 
+    pub fn lastPoppedStackElem(self: *const Vm) ?Object {
+        if (self.sp == stack_size) return null;
+        return self.stack[self.sp];
+    }
+
     pub fn run(self: *Vm) !void {
         var ip: usize = 0;
         while (ip < self.instructions.len) {
@@ -47,10 +52,19 @@ pub const Vm = struct {
                     const right = try self.pop();
                     const left = try self.pop();
 
-                    const left_int = switch (left) { .int => |v| v.value, else => return Errors.UnknownOpcode };
-                    const right_int = switch (right) { .int => |v| v.value, else => return Errors.UnknownOpcode };
+                    const left_int = switch (left) {
+                        .int => |v| v.value,
+                        else => return Errors.UnknownOpcode,
+                    };
+                    const right_int = switch (right) {
+                        .int => |v| v.value,
+                        else => return Errors.UnknownOpcode,
+                    };
 
                     try self.push(.{ .int = Object.Integer.init(left_int + right_int) });
+                },
+                .pop => {
+                    _ = try self.pop();
                 },
             }
             ip += 1;

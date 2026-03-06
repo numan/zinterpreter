@@ -6,6 +6,7 @@ pub const Instructions = []const u8;
 pub const Opcode = enum(u8) {
     constant,
     add,
+    pop,
 };
 
 pub const Definition = struct {
@@ -16,6 +17,7 @@ pub const Definition = struct {
 const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .constant = .{ .name = "OpConstant", .operand_widths = &.{2} },
     .add = .{ .name = "OpAdd", .operand_widths = &.{} },
+    .pop = .{ .name = "OpPop", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -149,6 +151,7 @@ test "instructions string" {
         try make(testing.allocator, .constant, &.{2}),
         try make(testing.allocator, .constant, &.{65535}),
         try make(testing.allocator, .add, &.{}),
+        try make(testing.allocator, .pop, &.{}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -162,6 +165,7 @@ test "instructions string" {
         \\0003 OpConstant 2
         \\0006 OpConstant 65535
         \\0009 OpAdd
+        \\0010 OpPop
         \\
     ;
 
@@ -188,6 +192,13 @@ test "make" {
             .operands = &.{},
             .expected = &.{
                 @intFromEnum(Opcode.add),
+            },
+        },
+        .{
+            .op = .pop,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.pop),
             },
         },
     };

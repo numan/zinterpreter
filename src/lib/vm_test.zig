@@ -53,7 +53,7 @@ fn runVmTests(tests: []const VmTestCase) !void {
         var vm = Vm.init(comp.bytecode());
         try vm.run();
 
-        const stack_elem = vm.stackTop() orelse {
+        const stack_elem = vm.lastPoppedStackElem() orelse {
             std.debug.print("stackTop returned null\n", .{});
             return error.TestUnexpectedResult;
         };
