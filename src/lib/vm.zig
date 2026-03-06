@@ -8,6 +8,11 @@ const Bytecode = compiler.Bytecode;
 
 const stack_size = 2048;
 
+const Errors = error{
+    StackOverflow,
+    UnknownOpcode,
+};
+
 pub const Vm = struct {
     constants: []Object,
     instructions: code.Instructions,
@@ -38,13 +43,29 @@ pub const Vm = struct {
                     ip += 2;
                     try self.push(self.constants[const_index]);
                 },
+                .add => {
+                    const right = try self.pop();
+                    const left = try self.pop();
+
+                    const left_int = switch (left) { .int => |v| v.value, else => return Errors.UnknownOpcode };
+                    const right_int = switch (right) { .int => |v| v.value, else => return Errors.UnknownOpcode };
+
+                    try self.push(.{ .int = Object.Integer.init(left_int + right_int) });
+                },
             }
             ip += 1;
         }
     }
 
+    fn pop(self: *Vm) !Object {
+        if (self.sp == 0) return Errors.StackOverflow; // Underflow error
+        const obj = self.stack[self.sp - 1];
+        self.sp -= 1;
+        return obj;
+    }
+
     fn push(self: *Vm, obj: Object) !void {
-        if (self.sp >= stack_size) return error.StackOverflow;
+        if (self.sp >= stack_size) return Errors.StackOverflow;
         self.stack[self.sp] = obj;
         self.sp += 1;
     }

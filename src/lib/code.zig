@@ -5,6 +5,7 @@ pub const Instructions = []const u8;
 
 pub const Opcode = enum(u8) {
     constant,
+    add,
 };
 
 pub const Definition = struct {
@@ -14,6 +15,7 @@ pub const Definition = struct {
 
 const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .constant = .{ .name = "OpConstant", .operand_widths = &.{2} },
+    .add = .{ .name = "OpAdd", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -34,12 +36,11 @@ pub fn make(allocator: std.mem.Allocator, op: Opcode, operands: []const usize) !
     var offset: usize = 1;
     for (operands, 0..) |operand, i| {
         const width = def.operand_widths[i];
-        switch (width) {
-            2 => {
-                const val: u16 = @intCast(operand);
-                std.mem.writeInt(u16, instruction[offset..][0..2], val, .big);
-            },
-            else => {},
+        inline for (1..9) |w| {
+            if (width == w) {
+                const T = std.meta.Int(.unsigned, w * 8);
+                std.mem.writeInt(T, instruction[offset..][0..w], @intCast(operand), .big);
+            }
         }
         offset += width;
     }
@@ -77,12 +78,12 @@ pub fn readOperands(def: Definition, ins: Instructions) ReadOperandsResult {
     var result = ReadOperandsResult{};
     var offset: usize = 0;
     for (def.operand_widths) |width| {
-        switch (width) {
-            2 => {
-                result.operands[result.len] = readUint16(ins[offset..]);
+        inline for (1..9) |w| {
+            if (width == w) {
+                const T = std.meta.Int(.unsigned, w * 8);
+                result.operands[result.len] = std.mem.readInt(T, ins[offset..][0..w], .big);
                 result.len += 1;
-            },
-            else => {},
+            }
         }
         offset += width;
     }
@@ -125,6 +126,7 @@ test "read operands" {
         operands: []const usize,
     }{
         .{ .op = .constant, .operands = &.{65535} },
+        .{ .op = .add, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -146,6 +148,7 @@ test "instructions string" {
         try make(testing.allocator, .constant, &.{1}),
         try make(testing.allocator, .constant, &.{2}),
         try make(testing.allocator, .constant, &.{65535}),
+        try make(testing.allocator, .add, &.{}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -158,6 +161,7 @@ test "instructions string" {
         \\0000 OpConstant 1
         \\0003 OpConstant 2
         \\0006 OpConstant 65535
+        \\0009 OpAdd
         \\
     ;
 
@@ -178,6 +182,13 @@ test "make" {
             .op = .constant,
             .operands = &.{65534},
             .expected = &.{ @intFromEnum(Opcode.constant), 255, 254 },
+        },
+        .{
+            .op = .add,
+            .operands = &.{},
+            .expected = &.{
+                @intFromEnum(Opcode.add),
+            },
         },
     };
 

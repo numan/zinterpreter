@@ -75,6 +75,23 @@ pub const Compiler = struct {
         _ = try self.emit(.constant, &.{index});
     }
 
+    fn evalInfixExpression(self: *Self, infix_expression: *const ExpressionType.InfixExpression) !void {
+        try self.compile(infix_expression.left);
+        try self.compile(infix_expression.right);
+
+        switch (infix_expression.token.token_type) {
+            .plus => _ = try self.emit(.add, &.{}),
+            else => unreachable,
+        }
+    }
+
+    pub fn bytecode(self: Self) Bytecode {
+        return .{
+            .instructions = self.instructions.items,
+            .constants = self.constants.items,
+        };
+    }
+
     fn emit(self: *Self, op: code.Opcode, operands: []const usize) !usize {
         const alloc = self.allocator();
         const inst = try code.make(alloc, op, operands);
@@ -93,18 +110,6 @@ pub const Compiler = struct {
         const alloc = self.allocator();
         try self.constants.append(alloc, obj);
         return self.constants.items.len - 1;
-    }
-
-    fn evalInfixExpression(self: *Self, infix_expression: *const ExpressionType.InfixExpression) !void {
-        try self.compile(infix_expression.left);
-        try self.compile(infix_expression.right);
-    }
-
-    pub fn bytecode(self: Self) Bytecode {
-        return .{
-            .instructions = self.instructions.items,
-            .constants = self.constants.items,
-        };
     }
 };
 

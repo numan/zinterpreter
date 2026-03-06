@@ -66,7 +66,7 @@ test "integer arithmetic" {
     const tests = [_]VmTestCase{
         .{ .input = "1", .expected = 1 },
         .{ .input = "2", .expected = 2 },
-        .{ .input = "1 + 2", .expected = 2 }, // no arithmetic opcode yet — last constant pushed
+        .{ .input = "1 + 2", .expected = 3 },
     };
 
     try runVmTests(&tests);

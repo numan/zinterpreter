@@ -82,6 +82,8 @@ test "integer arithmetic" {
     defer allocator.free(op_constant_0);
     const op_constant_1 = try code.make(allocator, .constant, &.{1});
     defer allocator.free(op_constant_1);
+    const op_add = try code.make(allocator, .add, &.{});
+    defer allocator.free(op_add);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -90,6 +92,7 @@ test "integer arithmetic" {
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
+                op_add,
             },
         },
     };
