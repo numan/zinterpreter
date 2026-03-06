@@ -9,7 +9,7 @@ pub const Opcode = enum(u8) {
 
 pub const Definition = struct {
     name: []const u8,
-    operand_widths: []const usize,
+    operand_widths: []const u8,
 };
 
 const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
@@ -47,7 +47,17 @@ pub fn make(allocator: std.mem.Allocator, op: Opcode, operands: []const usize) !
     return instruction;
 }
 
-pub const MaxOperands = 4;
+pub const MaxOperands = blk: {
+    var max_operands: usize = 0;
+    for (std.meta.fields(Opcode)) |field| {
+        const op = @field(Opcode, field.name);
+        const operand_count = definitions.get(op).operand_widths.len;
+        if (operand_count > max_operands) {
+            max_operands = operand_count;
+        }
+    }
+    break :blk max_operands;
+};
 
 pub const ReadOperandsResult = struct {
     operands: [MaxOperands]usize = undefined,
