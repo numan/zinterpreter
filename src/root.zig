@@ -26,4 +26,5 @@ comptime {
     _ = @import("lib/object_test.zig");
     _ = @import("lib/compiler_test.zig");
     _ = @import("lib/vm_test.zig");
+    _ = @import("lib/symbol_table_test.zig");
 }

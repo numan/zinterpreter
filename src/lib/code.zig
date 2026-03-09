@@ -20,6 +20,8 @@ pub const Opcode = enum(u8) {
     op_null,
     minus,
     bang,
+    set_global,
+    get_global,
 };
 
 pub const Definition = struct {
@@ -44,6 +46,8 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .op_null = .{ .name = "OpNull", .operand_widths = &.{} },
     .minus = .{ .name = "OpMinus", .operand_widths = &.{} },
     .bang = .{ .name = "OpBang", .operand_widths = &.{} },
+    .set_global = .{ .name = "OpSetGlobal", .operand_widths = &.{2} },
+    .get_global = .{ .name = "OpGetGlobal", .operand_widths = &.{2} },
 });
 
 pub fn lookup(op: Opcode) Definition {

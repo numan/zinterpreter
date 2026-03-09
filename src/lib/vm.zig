@@ -11,6 +11,7 @@ const False = Object{ .bool = Object.Boolean.init(false) };
 const Null = Object{ .null = Object.Null.init() };
 
 const stack_size = 2048;
+const globals_size = 65536;
 
 const Errors = error{
     StackOverflow,
@@ -22,6 +23,7 @@ pub const Vm = struct {
     instructions: code.Instructions,
     stack: [stack_size]Object,
     sp: usize, // stack pointer — always points to next free slot
+    globals: [globals_size]Object,
 
     pub fn init(bytecode: Bytecode) Vm {
         return .{
@@ -29,6 +31,7 @@ pub const Vm = struct {
             .instructions = bytecode.instructions,
             .stack = undefined,
             .sp = 0,
+            .globals = undefined,
         };
     }
 
@@ -117,6 +120,16 @@ pub const Vm = struct {
                         else => False,
                     };
                     try self.push(result);
+                },
+                .set_global => {
+                    const global_index = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip += 2;
+                    self.globals[global_index] = try self.pop();
+                },
+                .get_global => {
+                    const global_index = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip += 2;
+                    try self.push(self.globals[global_index]);
                 },
                 .pop => {
                     _ = try self.pop();

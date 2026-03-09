@@ -3,15 +3,19 @@ const std = @import("std");
 const code = @import("code.zig");
 const ast = @import("ast.zig");
 const object = @import("object.zig");
+const symbol_table = @import("symbol_table.zig");
 
 const Object = object.Object;
 const Program = ast.Program;
 const StatementType = ast.StatementType;
 const ExpressionType = ast.ExpressionType;
 
+const SymbolTable = symbol_table.SymbolTable;
+
 const Error = error{
     UnsupportedNodeType,
     OperationNotSupported,
+    UndefinedVariable,
 } || std.mem.Allocator.Error;
 
 const EmittedInstruction = struct {
@@ -30,6 +34,7 @@ pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
     instructions: std.ArrayList(u8),
     constants: std.ArrayList(Object),
+    symbol_table: SymbolTable,
     lastInstruction: ?EmittedInstruction = null,
     previousInstruction: ?EmittedInstruction = null,
 
@@ -40,6 +45,7 @@ pub const Compiler = struct {
             .arena = std.heap.ArenaAllocator.init(alloc),
             .instructions = .empty,
             .constants = .empty,
+            .symbol_table = SymbolTable.init(),
         };
     }
 
@@ -55,6 +61,7 @@ pub const Compiler = struct {
     pub fn deinit(self: *Self) void {
         self.instructions.deinit(self.allocator());
         self.constants.deinit(self.allocator());
+        self.symbol_table.deinit(self.allocator());
         self.arena.deinit();
     }
 
@@ -87,6 +94,11 @@ pub const Compiler = struct {
                 try self.compile(expression_statement);
                 _ = try self.emit(.pop, &.{});
             },
+            .let => |*let_stmt| {
+                try self.compile(&let_stmt.value.expression);
+                const sym = try self.symbol_table.define(self.allocator(), let_stmt.name.value);
+                _ = try self.emit(.set_global, &.{sym.index});
+            },
             else => Error.UnsupportedNodeType,
         };
     }
@@ -102,6 +114,10 @@ pub const Compiler = struct {
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
             .prefix_expression => |*prefix_expression| self.evalPrefixExpression(prefix_expression),
             .if_expression => |*if_expresson| self.evalIfExpression(if_expresson),
+            .identifier => |*ident| {
+                const sym = self.symbol_table.resolve(ident.value) orelse return Error.UndefinedVariable;
+                _ = try self.emit(.get_global, &.{sym.index});
+            },
             else => Error.UnsupportedNodeType,
         };
     }

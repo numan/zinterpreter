@@ -365,3 +365,59 @@ test "conditionals" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "let statements" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
+    defer allocator.free(op_set_global_0);
+    const op_set_global_1 = try code.make(allocator, .set_global, &.{1});
+    defer allocator.free(op_set_global_1);
+    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
+    defer allocator.free(op_get_global_0);
+    const op_get_global_1 = try code.make(allocator, .get_global, &.{1});
+    defer allocator.free(op_get_global_1);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "let one = 1; let two = 2;",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_constant_1,
+                op_set_global_1,
+            },
+        },
+        .{
+            .input = "let one = 1; one;",
+            .expected_constants = &.{1},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_pop,
+            },
+        },
+        .{
+            .input = "let one = 1; let two = one; two;",
+            .expected_constants = &.{1},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_set_global_1,
+                op_get_global_1,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}

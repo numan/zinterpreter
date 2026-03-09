@@ -167,3 +167,15 @@ test "conditionals" {
 
     try runVmTests(&tests);
 }
+
+test "let statements" {
+    const tests = [_]VmTestCase{
+        .{ .input = "let one = 1; one;", .expected = .{ .int = 1 } },
+        .{ .input = "let one = 1; let two = 2; one + two;", .expected = .{ .int = 3 } },
+        .{ .input = "let one = 1; let two = one; two;", .expected = .{ .int = 1 } },
+        .{ .input = "let x = 5; x;", .expected = .{ .int = 5 } },
+        .{ .input = "let x = 5; let y = 10; x + y;", .expected = .{ .int = 15 } },
+    };
+
+    try runVmTests(&tests);
+}
