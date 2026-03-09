@@ -152,12 +152,22 @@ test "integer arithmetic" {
 test "boolean expressions" {
     const allocator = testing.allocator;
 
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
     const op_true = try code.make(allocator, .op_true, &.{});
     defer allocator.free(op_true);
     const op_false = try code.make(allocator, .op_false, &.{});
     defer allocator.free(op_false);
     const op_pop = try code.make(allocator, .pop, &.{});
     defer allocator.free(op_pop);
+    const op_equal = try code.make(allocator, .equal, &.{});
+    defer allocator.free(op_equal);
+    const op_not_equal = try code.make(allocator, .not_equal, &.{});
+    defer allocator.free(op_not_equal);
+    const op_greater_than = try code.make(allocator, .greater_than, &.{});
+    defer allocator.free(op_greater_than);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -183,6 +193,66 @@ test "boolean expressions" {
                 op_true,
                 op_pop,
                 op_false,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 > 2",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_greater_than,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 < 2",
+            .expected_constants = &.{ 2, 1 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_greater_than,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 == 2",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_equal,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1 != 2",
+            .expected_constants = &.{ 1, 2 },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_not_equal,
+                op_pop,
+            },
+        },
+        .{
+            .input = "true == false",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_true,
+                op_false,
+                op_equal,
+                op_pop,
+            },
+        },
+        .{
+            .input = "true != false",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_true,
+                op_false,
+                op_not_equal,
                 op_pop,
             },
         },

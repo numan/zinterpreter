@@ -80,12 +80,46 @@ pub const Vm = struct {
                 .op_false => {
                     try self.push(False);
                 },
+                .equal, .not_equal, .greater_than => {
+                    const right = try self.pop();
+                    const left = try self.pop();
+                    try self.executeComparison(op, left, right);
+                },
                 .pop => {
                     _ = try self.pop();
                 },
             }
             ip += 1;
         }
+    }
+
+    fn executeComparison(self: *Vm, op: code.Opcode, left: Object, right: Object) !void {
+        if (left == .int and right == .int) {
+            return self.executeIntegerComparison(op, left.int.value, right.int.value);
+        }
+
+        const result = switch (op) {
+            .equal => std.meta.eql(left, right),
+            .not_equal => !std.meta.eql(left, right),
+            else => return Errors.UnknownOpcode,
+        };
+
+        try self.push(nativeBoolToBooleanObject(result));
+    }
+
+    fn executeIntegerComparison(self: *Vm, op: code.Opcode, left: i64, right: i64) !void {
+        const result = switch (op) {
+            .equal => left == right,
+            .not_equal => left != right,
+            .greater_than => left > right,
+            else => return Errors.UnknownOpcode,
+        };
+
+        try self.push(nativeBoolToBooleanObject(result));
+    }
+
+    fn nativeBoolToBooleanObject(value: bool) Object {
+        return if (value) True else False;
     }
 
     fn pop(self: *Vm) !Object {

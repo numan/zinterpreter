@@ -12,6 +12,9 @@ pub const Opcode = enum(u8) {
     pop,
     op_true,
     op_false,
+    equal,
+    not_equal,
+    greater_than,
 };
 
 pub const Definition = struct {
@@ -28,6 +31,9 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .pop = .{ .name = "OpPop", .operand_widths = &.{} },
     .op_true = .{ .name = "OpTrue", .operand_widths = &.{} },
     .op_false = .{ .name = "OpFalse", .operand_widths = &.{} },
+    .equal = .{ .name = "OpEqual", .operand_widths = &.{} },
+    .not_equal = .{ .name = "OpNotEqual", .operand_widths = &.{} },
+    .greater_than = .{ .name = "OpGreaterThan", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {

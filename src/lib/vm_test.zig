@@ -104,6 +104,23 @@ test "boolean expressions" {
     const tests = [_]VmTestCase{
         .{ .input = "true", .expected = .{ .boolean = true } },
         .{ .input = "false", .expected = .{ .boolean = false } },
+        .{ .input = "1 < 2", .expected = .{ .boolean = true } },
+        .{ .input = "1 > 2", .expected = .{ .boolean = false } },
+        .{ .input = "1 < 1", .expected = .{ .boolean = false } },
+        .{ .input = "1 > 1", .expected = .{ .boolean = false } },
+        .{ .input = "1 == 1", .expected = .{ .boolean = true } },
+        .{ .input = "1 != 1", .expected = .{ .boolean = false } },
+        .{ .input = "1 == 2", .expected = .{ .boolean = false } },
+        .{ .input = "1 != 2", .expected = .{ .boolean = true } },
+        .{ .input = "true == true", .expected = .{ .boolean = true } },
+        .{ .input = "false == false", .expected = .{ .boolean = true } },
+        .{ .input = "true == false", .expected = .{ .boolean = false } },
+        .{ .input = "true != false", .expected = .{ .boolean = true } },
+        .{ .input = "false != true", .expected = .{ .boolean = true } },
+        .{ .input = "(1 < 2) == true", .expected = .{ .boolean = true } },
+        .{ .input = "(1 < 2) == false", .expected = .{ .boolean = false } },
+        .{ .input = "(1 > 2) == true", .expected = .{ .boolean = false } },
+        .{ .input = "(1 > 2) == false", .expected = .{ .boolean = true } },
     };
 
     try runVmTests(&tests);

@@ -93,6 +93,14 @@ pub const Compiler = struct {
     }
 
     fn evalInfixExpression(self: *Self, infix_expression: *const ExpressionType.InfixExpression) !void {
+        // For less-than, swap operands and use greater-than
+        if (infix_expression.token.token_type == .lt) {
+            try self.compile(infix_expression.right);
+            try self.compile(infix_expression.left);
+            _ = try self.emit(.greater_than, &.{});
+            return;
+        }
+
         try self.compile(infix_expression.left);
         try self.compile(infix_expression.right);
 
@@ -101,6 +109,9 @@ pub const Compiler = struct {
             .minus => _ = try self.emit(.sub, &.{}),
             .asterisk => _ = try self.emit(.mul, &.{}),
             .slash => _ = try self.emit(.div, &.{}),
+            .gt => _ = try self.emit(.greater_than, &.{}),
+            .eq => _ = try self.emit(.equal, &.{}),
+            .not_eq => _ = try self.emit(.not_equal, &.{}),
             else => return Error.OperationNotSupported,
         }
     }
