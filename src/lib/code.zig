@@ -15,6 +15,8 @@ pub const Opcode = enum(u8) {
     equal,
     not_equal,
     greater_than,
+    jump_not_truthy,
+    jump,
 };
 
 pub const Definition = struct {
@@ -34,6 +36,8 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .equal = .{ .name = "OpEqual", .operand_widths = &.{} },
     .not_equal = .{ .name = "OpNotEqual", .operand_widths = &.{} },
     .greater_than = .{ .name = "OpGreaterThan", .operand_widths = &.{} },
+    .jump_not_truthy = .{ .name = "OpJumpNotTruthy", .operand_widths = &.{2} },
+    .jump = .{ .name = "OpJump", .operand_widths = &.{2} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -150,6 +154,8 @@ test "read operands" {
         .{ .op = .div, .operands = &.{} },
         .{ .op = .op_true, .operands = &.{} },
         .{ .op = .op_false, .operands = &.{} },
+        .{ .op = .jump_not_truthy, .operands = &.{65535} },
+        .{ .op = .jump, .operands = &.{65535} },
     };
 
     for (tests) |tt| {
@@ -173,6 +179,8 @@ test "instructions string" {
         try make(testing.allocator, .constant, &.{65535}),
         try make(testing.allocator, .add, &.{}),
         try make(testing.allocator, .pop, &.{}),
+        try make(testing.allocator, .jump_not_truthy, &.{65535}),
+        try make(testing.allocator, .jump, &.{65535}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -187,6 +195,8 @@ test "instructions string" {
         \\0006 OpConstant 65535
         \\0009 OpAdd
         \\0010 OpPop
+        \\0011 OpJumpNotTruthy 65535
+        \\0014 OpJump 65535
         \\
     ;
 

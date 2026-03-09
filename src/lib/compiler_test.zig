@@ -260,3 +260,55 @@ test "boolean expressions" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "conditionals" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_true = try code.make(allocator, .op_true, &.{});
+    defer allocator.free(op_true);
+    const op_jump_not_truthy = try code.make(allocator, .jump_not_truthy, &.{7});
+    defer allocator.free(op_jump_not_truthy);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+    const op_jump = try code.make(allocator, .jump, &.{13});
+    defer allocator.free(op_jump);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_jump_not_truthy_10 = try code.make(allocator, .jump_not_truthy, &.{10});
+    defer allocator.free(op_jump_not_truthy_10);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "if (true) { 10 }; 3333;",
+            .expected_constants = &.{ 10, 3333 },
+            .expected_instructions = &.{
+                op_true,
+                op_jump_not_truthy,
+                op_constant_0,
+                op_pop,
+                op_constant_1,
+                op_pop,
+            },
+        },
+        .{
+            .input = "if (true) { 10 } else { 20 }; 3333;",
+            .expected_constants = &.{ 10, 20, 3333 },
+            .expected_instructions = &.{
+                op_true,
+                op_jump_not_truthy_10,
+                op_constant_0,
+                op_jump,
+                op_constant_1,
+                op_pop,
+                op_constant_2,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}

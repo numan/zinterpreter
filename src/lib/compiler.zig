@@ -14,10 +14,24 @@ const Error = error{
     OperationNotSupported,
 } || std.mem.Allocator.Error;
 
+const EmittedInstruction = struct {
+    opcode: code.Opcode,
+    position: usize,
+
+    pub fn init(opcode: code.Opcode, position: usize) EmittedInstruction {
+        return .{
+            .opcode = opcode,
+            .position = position,
+        };
+    }
+};
+
 pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
     instructions: std.ArrayList(u8),
     constants: std.ArrayList(Object),
+    lastInstruction: ?EmittedInstruction = null,
+    previousInstruction: ?EmittedInstruction = null,
 
     const Self = @This();
 
@@ -27,6 +41,11 @@ pub const Compiler = struct {
             .instructions = .empty,
             .constants = .empty,
         };
+    }
+
+    fn setLastInstruction(self: *Self, opcode: code.Opcode, position: usize) void {
+        self.previousInstruction = self.lastInstruction;
+        self.lastInstruction = EmittedInstruction.init(opcode, position);
     }
 
     pub fn allocator(self: *Self) std.mem.Allocator {
@@ -45,12 +64,19 @@ pub const Compiler = struct {
             *StatementType, *const StatementType => self.evalStatement(node),
             *StatementType.ExpressionStatement, *const StatementType.ExpressionStatement => self.evalExpressionStatement(node),
             *ExpressionType, *const ExpressionType => try self.evalExpression(node),
+            *StatementType.BlockStatement, *const StatementType.BlockStatement => self.evalBlockStatement(node),
             inline else => @compileError("unsupported node type for eval"),
         };
     }
 
     fn evalProgram(self: *Self, program: *const Program) !void {
         for (program.statements.items) |*stmt| {
+            try self.compile(stmt);
+        }
+    }
+
+    fn evalBlockStatement(self: *Self, block_statement: *const StatementType.BlockStatement) !void {
+        for (block_statement.statements.items) |*stmt| {
             try self.compile(stmt);
         }
     }
@@ -74,8 +100,35 @@ pub const Compiler = struct {
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
             .boolean_literal => self.evalBooleanLiteral(&expression.boolean_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
+            .if_expression => |*if_expresson| self.evalIfExpression(if_expresson),
             else => Error.UnsupportedNodeType,
         };
+    }
+
+    fn evalIfExpression(self: *Self, if_expression: *const ExpressionType.IfExpression) !void {
+        try self.compile(if_expression.condition);
+
+        const jumpNotTruthyPos = try self.emit(.jump_not_truthy, &.{9999});
+
+        try self.compile(&if_expression.consequence);
+
+        self.removeLastPop();
+
+        if (if_expression.alternative == null) {
+            const afterConsequencePos = self.instructions.items.len;
+            try self.changeOperand(jumpNotTruthyPos, afterConsequencePos);
+        } else {
+            const jumpPosition = try self.emit(.jump, &.{9999});
+
+            const alternativeStarPosition = self.instructions.items.len;
+            try self.compile(&if_expression.alternative.?);
+            self.removeLastPop();
+
+            const afterAlternativePoition = self.instructions.items.len;
+
+            try self.changeOperand(jumpNotTruthyPos, alternativeStarPosition);
+            try self.changeOperand(jumpPosition, afterAlternativePoition);
+        }
     }
 
     fn evalIntegerLiteral(self: *Self, int_literal: *const ExpressionType.IntegerLiteral) !void {
@@ -127,6 +180,9 @@ pub const Compiler = struct {
         const alloc = self.allocator();
         const inst = try code.make(alloc, op, operands);
         const pos = try self.addInstruction(inst);
+
+        self.setLastInstruction(op, pos);
+
         return pos;
     }
 
@@ -141,6 +197,35 @@ pub const Compiler = struct {
         const alloc = self.allocator();
         try self.constants.append(alloc, obj);
         return self.constants.items.len - 1;
+    }
+
+    fn replaceInstruction(self: *Self, pos: usize, new_instruction: code.Instructions) void {
+        var offset = pos;
+        for (new_instruction) |byte| {
+            self.instructions.items[offset] = byte;
+            offset += 1;
+        }
+    }
+
+    fn changeOperand(self: *Self, op_pos: usize, operand: usize) !void {
+        const op: code.Opcode = @enumFromInt(self.instructions.items[op_pos]);
+        const new_instruction = try code.make(self.allocator(), op, &.{operand});
+
+        self.replaceInstruction(op_pos, new_instruction);
+    }
+
+    fn lastInstructionIsPop(self: *Self) bool {
+        if (self.lastInstruction) |last| {
+            return last.opcode == .pop;
+        }
+        return false;
+    }
+
+    fn removeLastPop(self: *Self) void {
+        if (self.lastInstructionIsPop()) {
+            self.instructions.items = self.instructions.items[0..self.lastInstruction.?.position];
+            self.lastInstruction = self.previousInstruction;
+        }
     }
 };
 
