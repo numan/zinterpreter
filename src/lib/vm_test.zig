@@ -12,6 +12,7 @@ const Compiler = compiler.Compiler;
 const Expected = union(enum) {
     int: i64,
     boolean: bool,
+    null,
 };
 
 const VmTestCase = struct {
@@ -47,10 +48,18 @@ fn testBooleanObject(expected: bool, obj: Object) !void {
     try testing.expectEqual(expected, boolean.value);
 }
 
+fn testNullObject(obj: Object) !void {
+    if (obj != .null) {
+        std.debug.print("object is not Null. got={s}\n", .{obj.typeName()});
+        return error.TestUnexpectedResult;
+    }
+}
+
 fn testExpectedObject(expected: Expected, obj: Object) !void {
     switch (expected) {
         .int => |val| try testIntegerObject(val, obj),
         .boolean => |val| try testBooleanObject(val, obj),
+        .null => try testNullObject(obj),
     }
 }
 
@@ -121,6 +130,23 @@ test "boolean expressions" {
         .{ .input = "(1 < 2) == false", .expected = .{ .boolean = false } },
         .{ .input = "(1 > 2) == true", .expected = .{ .boolean = false } },
         .{ .input = "(1 > 2) == false", .expected = .{ .boolean = true } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "conditionals" {
+    const tests = [_]VmTestCase{
+        .{ .input = "if (true) { 10 }", .expected = .{ .int = 10 } },
+        .{ .input = "if (true) { 10 } else { 20 }", .expected = .{ .int = 10 } },
+        .{ .input = "if (false) { 10 } else { 20 }", .expected = .{ .int = 20 } },
+        .{ .input = "if (1) { 10 }", .expected = .{ .int = 10 } },
+        .{ .input = "if (1 < 2) { 10 }", .expected = .{ .int = 10 } },
+        .{ .input = "if (1 < 2) { 10 } else { 20 }", .expected = .{ .int = 10 } },
+        .{ .input = "if (1 > 2) { 10 } else { 20 }", .expected = .{ .int = 20 } },
+        .{ .input = "if (1 > 2) { 10 }", .expected = .null },
+        .{ .input = "if (false) { 10 }", .expected = .null },
+        .{ .input = "if ((if (false) { 10 })) { 10 } else { 20 }", .expected = .{ .int = 20 } },
     };
 
     try runVmTests(&tests);

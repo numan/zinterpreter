@@ -114,21 +114,20 @@ pub const Compiler = struct {
 
         self.removeLastPop();
 
-        if (if_expression.alternative == null) {
-            const afterConsequencePos = self.instructions.items.len;
-            try self.changeOperand(jumpNotTruthyPos, afterConsequencePos);
-        } else {
-            const jumpPosition = try self.emit(.jump, &.{9999});
+        // Always emit OpJump after consequence
+        const jumpPos = try self.emit(.jump, &.{9999});
+        const afterConsequencePos = self.instructions.items.len;
+        try self.changeOperand(jumpNotTruthyPos, afterConsequencePos);
 
-            const alternativeStarPosition = self.instructions.items.len;
-            try self.compile(&if_expression.alternative.?);
+        if (if_expression.alternative) |*alt| {
+            try self.compile(alt);
             self.removeLastPop();
-
-            const afterAlternativePoition = self.instructions.items.len;
-
-            try self.changeOperand(jumpNotTruthyPos, alternativeStarPosition);
-            try self.changeOperand(jumpPosition, afterAlternativePoition);
+        } else {
+            _ = try self.emit(.op_null, &.{});
         }
+
+        const afterAlternativePos = self.instructions.items.len;
+        try self.changeOperand(jumpPos, afterAlternativePos);
     }
 
     fn evalIntegerLiteral(self: *Self, int_literal: *const ExpressionType.IntegerLiteral) !void {

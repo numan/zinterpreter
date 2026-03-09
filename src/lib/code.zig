@@ -17,6 +17,7 @@ pub const Opcode = enum(u8) {
     greater_than,
     jump_not_truthy,
     jump,
+    op_null,
 };
 
 pub const Definition = struct {
@@ -38,6 +39,7 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .greater_than = .{ .name = "OpGreaterThan", .operand_widths = &.{} },
     .jump_not_truthy = .{ .name = "OpJumpNotTruthy", .operand_widths = &.{2} },
     .jump = .{ .name = "OpJump", .operand_widths = &.{2} },
+    .op_null = .{ .name = "OpNull", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {

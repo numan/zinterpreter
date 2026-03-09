@@ -270,16 +270,18 @@ test "conditionals" {
     defer allocator.free(op_constant_1);
     const op_true = try code.make(allocator, .op_true, &.{});
     defer allocator.free(op_true);
-    const op_jump_not_truthy = try code.make(allocator, .jump_not_truthy, &.{7});
-    defer allocator.free(op_jump_not_truthy);
     const op_pop = try code.make(allocator, .pop, &.{});
     defer allocator.free(op_pop);
-    const op_jump = try code.make(allocator, .jump, &.{13});
-    defer allocator.free(op_jump);
+    const op_null = try code.make(allocator, .op_null, &.{});
+    defer allocator.free(op_null);
     const op_constant_2 = try code.make(allocator, .constant, &.{2});
     defer allocator.free(op_constant_2);
     const op_jump_not_truthy_10 = try code.make(allocator, .jump_not_truthy, &.{10});
     defer allocator.free(op_jump_not_truthy_10);
+    const op_jump_11 = try code.make(allocator, .jump, &.{11});
+    defer allocator.free(op_jump_11);
+    const op_jump_13 = try code.make(allocator, .jump, &.{13});
+    defer allocator.free(op_jump_13);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -287,8 +289,10 @@ test "conditionals" {
             .expected_constants = &.{ 10, 3333 },
             .expected_instructions = &.{
                 op_true,
-                op_jump_not_truthy,
+                op_jump_not_truthy_10,
                 op_constant_0,
+                op_jump_11,
+                op_null,
                 op_pop,
                 op_constant_1,
                 op_pop,
@@ -301,7 +305,7 @@ test "conditionals" {
                 op_true,
                 op_jump_not_truthy_10,
                 op_constant_0,
-                op_jump,
+                op_jump_13,
                 op_constant_1,
                 op_pop,
                 op_constant_2,

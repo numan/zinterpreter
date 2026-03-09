@@ -8,6 +8,7 @@ const Bytecode = compiler.Bytecode;
 
 const True = Object{ .bool = Object.Boolean.init(true) };
 const False = Object{ .bool = Object.Boolean.init(false) };
+const Null = Object{ .null = Object.Null.init() };
 
 const stack_size = 2048;
 
@@ -85,10 +86,24 @@ pub const Vm = struct {
                     const left = try self.pop();
                     try self.executeComparison(op, left, right);
                 },
+                .jump => {
+                    const pos = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip = pos - 1; // loop will increment
+                },
+                .jump_not_truthy => {
+                    const pos = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip += 2; // skip operand
+                    const condition = try self.pop();
+                    if (!isTruthy(condition)) {
+                        ip = pos - 1; // loop will increment
+                    }
+                },
+                .op_null => {
+                    try self.push(Null);
+                },
                 .pop => {
                     _ = try self.pop();
                 },
-                else => return Errors.UnknownOpcode,
             }
             ip += 1;
         }
@@ -121,6 +136,14 @@ pub const Vm = struct {
 
     fn nativeBoolToBooleanObject(value: bool) Object {
         return if (value) True else False;
+    }
+
+    fn isTruthy(obj: Object) bool {
+        return switch (obj) {
+            .bool => |b| b.value,
+            .null => false,
+            else => true,
+        };
     }
 
     fn pop(self: *Vm) !Object {
