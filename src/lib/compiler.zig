@@ -100,6 +100,7 @@ pub const Compiler = struct {
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
             .boolean_literal => self.evalBooleanLiteral(&expression.boolean_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
+            .prefix_expression => |*prefix_expression| self.evalPrefixExpression(prefix_expression),
             .if_expression => |*if_expresson| self.evalIfExpression(if_expresson),
             else => Error.UnsupportedNodeType,
         };
@@ -141,6 +142,16 @@ pub const Compiler = struct {
             _ = try self.emit(.op_true, &.{});
         } else {
             _ = try self.emit(.op_false, &.{});
+        }
+    }
+
+    fn evalPrefixExpression(self: *Self, prefix_expression: *const ExpressionType.PrefixExpression) !void {
+        try self.compile(&prefix_expression.right.expression);
+
+        switch (prefix_expression.token.token_type) {
+            .minus => _ = try self.emit(.minus, &.{}),
+            .bang => _ = try self.emit(.bang, &.{}),
+            else => return Error.OperationNotSupported,
         }
     }
 

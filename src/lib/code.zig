@@ -18,6 +18,8 @@ pub const Opcode = enum(u8) {
     jump_not_truthy,
     jump,
     op_null,
+    minus,
+    bang,
 };
 
 pub const Definition = struct {
@@ -40,6 +42,8 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .jump_not_truthy = .{ .name = "OpJumpNotTruthy", .operand_widths = &.{2} },
     .jump = .{ .name = "OpJump", .operand_widths = &.{2} },
     .op_null = .{ .name = "OpNull", .operand_widths = &.{} },
+    .minus = .{ .name = "OpMinus", .operand_widths = &.{} },
+    .bang = .{ .name = "OpBang", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {

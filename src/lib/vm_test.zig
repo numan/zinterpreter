@@ -135,6 +135,22 @@ test "boolean expressions" {
     try runVmTests(&tests);
 }
 
+test "prefix expressions" {
+    const tests = [_]VmTestCase{
+        .{ .input = "-5", .expected = .{ .int = -5 } },
+        .{ .input = "-10", .expected = .{ .int = -10 } },
+        .{ .input = "-50 + 100 + -50", .expected = .{ .int = 0 } },
+        .{ .input = "!true", .expected = .{ .boolean = false } },
+        .{ .input = "!false", .expected = .{ .boolean = true } },
+        .{ .input = "!5", .expected = .{ .boolean = false } },
+        .{ .input = "!!true", .expected = .{ .boolean = true } },
+        .{ .input = "!!false", .expected = .{ .boolean = false } },
+        .{ .input = "!!5", .expected = .{ .boolean = true } },
+    };
+
+    try runVmTests(&tests);
+}
+
 test "conditionals" {
     const tests = [_]VmTestCase{
         .{ .input = "if (true) { 10 }", .expected = .{ .int = 10 } },

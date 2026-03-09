@@ -101,6 +101,23 @@ pub const Vm = struct {
                 .op_null => {
                     try self.push(Null);
                 },
+                .minus => {
+                    const operand = try self.pop();
+                    const int_val = switch (operand) {
+                        .int => |v| v.value,
+                        else => return Errors.UnknownOpcode,
+                    };
+                    try self.push(.{ .int = Object.Integer.init(-int_val) });
+                },
+                .bang => {
+                    const operand = try self.pop();
+                    const result = switch (operand) {
+                        .bool => |b| if (b.value) False else True,
+                        .null => True,
+                        else => False,
+                    };
+                    try self.push(result);
+                },
                 .pop => {
                     _ = try self.pop();
                 },

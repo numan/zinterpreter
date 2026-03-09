@@ -261,6 +261,55 @@ test "boolean expressions" {
     try runCompilerTests(allocator, &tests);
 }
 
+test "prefix expressions" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_true = try code.make(allocator, .op_true, &.{});
+    defer allocator.free(op_true);
+    const op_false = try code.make(allocator, .op_false, &.{});
+    defer allocator.free(op_false);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+    const op_minus = try code.make(allocator, .minus, &.{});
+    defer allocator.free(op_minus);
+    const op_bang = try code.make(allocator, .bang, &.{});
+    defer allocator.free(op_bang);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "-1",
+            .expected_constants = &.{1},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_minus,
+                op_pop,
+            },
+        },
+        .{
+            .input = "!true",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_true,
+                op_bang,
+                op_pop,
+            },
+        },
+        .{
+            .input = "!false",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                op_false,
+                op_bang,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
 test "conditionals" {
     const allocator = testing.allocator;
 
