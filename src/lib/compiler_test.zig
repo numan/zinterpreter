@@ -7,6 +7,7 @@ const ast = @import("./ast.zig");
 const Lexer = @import("./lexer.zig").Lexer;
 const Parser = @import("./parser.zig").Parser;
 const Object = @import("./object.zig").Object;
+const SymbolTable = @import("./symbol_table.zig").SymbolTable;
 
 const Compiler = compiler.Compiler;
 
@@ -64,7 +65,11 @@ fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCas
         defer parser.deinit();
         const program = try parser.parse();
 
-        var comp = Compiler.init(allocator);
+        var symbol_table = SymbolTable.init(allocator);
+        defer symbol_table.deinit();
+        var constants = std.ArrayList(Object).empty;
+        defer constants.deinit(allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
         defer comp.deinit();
         try comp.compile(program);
 

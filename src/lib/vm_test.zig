@@ -5,7 +5,9 @@ const compiler = @import("./compiler.zig");
 const Lexer = @import("./lexer.zig").Lexer;
 const Parser = @import("./parser.zig").Parser;
 const Object = @import("./object.zig").Object;
-const Vm = @import("./vm.zig").Vm;
+const vm_mod = @import("./vm.zig");
+const Vm = vm_mod.Vm;
+const SymbolTable = @import("./symbol_table.zig").SymbolTable;
 
 const Compiler = compiler.Compiler;
 
@@ -74,11 +76,16 @@ fn runVmTests(tests: []const VmTestCase) !void {
         defer parser.deinit();
         const program = try parser.parse();
 
-        var comp = Compiler.init(allocator);
+        var symbol_table = SymbolTable.init(allocator);
+        defer symbol_table.deinit();
+        var constants = std.ArrayList(Object).empty;
+        defer constants.deinit(allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
         defer comp.deinit();
         try comp.compile(program);
 
-        var vm = Vm.init(comp.bytecode());
+        var globals: [vm_mod.globals_size]Object = undefined;
+        var vm = Vm.init(comp.bytecode(), &globals);
         try vm.run();
 
         const stack_elem = vm.lastPoppedStackElem() orelse {

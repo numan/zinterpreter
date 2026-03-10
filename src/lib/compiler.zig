@@ -33,19 +33,21 @@ const EmittedInstruction = struct {
 pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
     instructions: std.ArrayList(u8),
-    constants: std.ArrayList(Object),
-    symbol_table: SymbolTable,
+    constants: *std.ArrayList(Object),
+    constants_allocator: std.mem.Allocator,
+    symbol_table: *SymbolTable,
     lastInstruction: ?EmittedInstruction = null,
     previousInstruction: ?EmittedInstruction = null,
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator) Compiler {
-        return .{
+    pub fn init(alloc: std.mem.Allocator, st: *SymbolTable, constants: *std.ArrayList(Object), constants_alloc: std.mem.Allocator) Compiler {
+        return Compiler{
             .arena = std.heap.ArenaAllocator.init(alloc),
             .instructions = .empty,
-            .constants = .empty,
-            .symbol_table = SymbolTable.init(),
+            .constants = constants,
+            .constants_allocator = constants_alloc,
+            .symbol_table = st,
         };
     }
 
@@ -60,8 +62,6 @@ pub const Compiler = struct {
 
     pub fn deinit(self: *Self) void {
         self.instructions.deinit(self.allocator());
-        self.constants.deinit(self.allocator());
-        self.symbol_table.deinit(self.allocator());
         self.arena.deinit();
     }
 
@@ -96,7 +96,7 @@ pub const Compiler = struct {
             },
             .let => |*let_stmt| {
                 try self.compile(&let_stmt.value.expression);
-                const sym = try self.symbol_table.define(self.allocator(), let_stmt.name.value);
+                const sym = try self.symbol_table.define(let_stmt.name.value);
                 _ = try self.emit(.set_global, &.{sym.index});
             },
             else => Error.UnsupportedNodeType,
@@ -220,8 +220,7 @@ pub const Compiler = struct {
     }
 
     fn addConstant(self: *Self, obj: Object) !usize {
-        const alloc = self.allocator();
-        try self.constants.append(alloc, obj);
+        try self.constants.append(self.constants_allocator, obj);
         return self.constants.items.len - 1;
     }
 

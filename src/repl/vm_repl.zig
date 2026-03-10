@@ -4,7 +4,10 @@ const Parser = @import("../lib/parser.zig").Parser;
 const Evaluator = @import("../lib/evaluator.zig").Evaluator;
 const Gc = @import("../lib/gc.zig").Gc;
 const Compiler = @import("../lib/compiler.zig").Compiler;
-const Vm = @import("../lib/vm.zig").Vm;
+const vm_mod = @import("../lib/vm.zig");
+const Vm = vm_mod.Vm;
+const Object = @import("../lib/object.zig").Object;
+const SymbolTable = @import("../lib/symbol_table.zig").SymbolTable;
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -30,6 +33,17 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
+    // Persistent state across REPL iterations
+    var st_arena = std.heap.ArenaAllocator.init(allocator);
+    defer st_arena.deinit();
+    var symbol_table = SymbolTable.init(st_arena.allocator());
+    defer symbol_table.deinit();
+
+    var constants = std.ArrayList(Object).empty;
+    defer constants.deinit(allocator);
+
+    var globals: [vm_mod.globals_size]Object = undefined;
+
     try stdout.print("{s} ", .{PROMPT});
     try stdout.flush();
 
@@ -48,7 +62,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
         if (errors.len != 0) {
             try printParseErrors(errors, stdout);
         } else {
-            var compiler = Compiler.init(allocator);
+            var compiler = Compiler.init(allocator, &symbol_table, &constants, allocator);
             defer compiler.deinit();
 
             compiler.compile(program) catch |err| {
@@ -58,7 +72,9 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
                 continue;
             };
 
-            var vm = Vm.init(compiler.bytecode());
+            const bc = compiler.bytecode();
+
+            var vm = Vm.init(bc, &globals);
             vm.run() catch |err| {
                 try stdout.print("VM error: {s}\n", .{@errorName(err)});
                 try stdout.print("{s} ", .{PROMPT});

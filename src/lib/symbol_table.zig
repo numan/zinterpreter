@@ -12,24 +12,25 @@ pub const Symbol = struct {
 
 pub const SymbolTable = struct {
     outer: ?*SymbolTable,
-    store: std.StringHashMapUnmanaged(Symbol),
+    store: std.StringHashMap(Symbol),
     num_definitions: usize,
 
-    pub fn init() SymbolTable {
+    pub fn init(allocator: std.mem.Allocator) SymbolTable {
         return .{
             .outer = null,
-            .store = .empty,
+            .store = std.StringHashMap(Symbol).init(allocator),
             .num_definitions = 0,
         };
     }
 
-    pub fn define(self: *SymbolTable, alloc: std.mem.Allocator, name: []const u8) !Symbol {
+    pub fn define(self: *SymbolTable, name: []const u8) !Symbol {
+        const owned_name = try self.store.allocator.dupe(u8, name);
         const symbol = Symbol{
-            .name = name,
+            .name = owned_name,
             .scope = .global,
             .index = self.num_definitions,
         };
-        try self.store.put(alloc, name, symbol);
+        try self.store.put(owned_name, symbol);
         self.num_definitions += 1;
         return symbol;
     }
@@ -44,7 +45,11 @@ pub const SymbolTable = struct {
         return null;
     }
 
-    pub fn deinit(self: *SymbolTable, alloc: std.mem.Allocator) void {
-        self.store.deinit(alloc);
+    pub fn deinit(self: *SymbolTable) void {
+        var it = self.store.iterator();
+        while (it.next()) |entry| {
+            self.store.allocator.free(entry.key_ptr.*);
+        }
+        self.store.deinit();
     }
 };
