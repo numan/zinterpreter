@@ -1,8 +1,7 @@
 const std = @import("std");
 const Lexer = @import("../lib/lexer.zig").Lexer;
 const Parser = @import("../lib/parser.zig").Parser;
-const Evaluator = @import("../lib/evaluator.zig").Evaluator;
-const Gc = @import("../lib/gc.zig").Gc;
+const EvalState = @import("../lib/eval_state.zig").EvalState;
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -28,12 +27,10 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
-    var collector = Gc.init(allocator);
-    defer collector.deinit();
+    var state = try EvalState.init(allocator);
+    defer state.deinit();
 
-    const env = try collector.allocEnvironment(null);
-
-    var evaluator = Evaluator.init(env, &collector);
+    var evaluator = state.newEvaluator();
     defer evaluator.deinit();
 
     try stdout.print("{s} ", .{PROMPT});
@@ -57,7 +54,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             const eval = try evaluator.eval(program);
             try eval.inspect(stdout);
             try stdout.writeAll("\n");
-            collector.collect(env);
+            state.collect();
         }
 
         try stdout.print("{s} ", .{PROMPT});

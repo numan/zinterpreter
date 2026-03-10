@@ -16,6 +16,8 @@ comptime {
     _ = @import("lib/gc.zig");
     _ = @import("lib/code.zig");
     _ = @import("lib/vm.zig");
+    _ = @import("lib/vm_state.zig");
+    _ = @import("lib/eval_state.zig");
 }
 
 // All the tests go here
