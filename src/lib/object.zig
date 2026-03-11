@@ -172,6 +172,12 @@ pub const Object = union(enum) {
         marked: bool = false,
         ref_count: usize = 0,
 
+        pub fn init(elements: []Object) Array {
+            return .{
+                .elements = elements,
+            };
+        }
+
         pub fn inspect(self: *const Object.Array, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             try writer.writeAll("[");
             for (self.elements, 0..) |*elem, i| {

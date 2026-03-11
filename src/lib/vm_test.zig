@@ -11,10 +11,17 @@ const SymbolTable = @import("./symbol_table.zig").SymbolTable;
 
 const Compiler = compiler.Compiler;
 
+const HashEntry = struct {
+    key: Object.HashKey,
+    value: i64,
+};
+
 const Expected = union(enum) {
     int: i64,
     boolean: bool,
     string: []const u8,
+    int_array: []const i64,
+    int_hash: []const HashEntry,
     null,
 };
 
@@ -74,6 +81,36 @@ fn testExpectedObject(expected: Expected, obj: Object) !void {
         .int => |val| try testIntegerObject(val, obj),
         .boolean => |val| try testBooleanObject(val, obj),
         .string => |val| try testStringObject(val, obj),
+        .int_array => |expected_elements| {
+            const array = switch (obj) {
+                .array => |a| a,
+                else => {
+                    std.debug.print("object is not Array. got={s}\n", .{obj.typeName()});
+                    return error.TestUnexpectedResult;
+                },
+            };
+            try testing.expectEqual(expected_elements.len, array.elements.len);
+            for (expected_elements, array.elements) |exp, elem| {
+                try testIntegerObject(exp, elem);
+            }
+        },
+        .int_hash => |expected_entries| {
+            const hash = switch (obj) {
+                .hash => |h| h,
+                else => {
+                    std.debug.print("object is not Hash. got={s}\n", .{obj.typeName()});
+                    return error.TestUnexpectedResult;
+                },
+            };
+            try testing.expectEqual(expected_entries.len, hash.pairs.count());
+            for (expected_entries) |entry| {
+                const pair = hash.pairs.get(entry.key) orelse {
+                    std.debug.print("no pair for given key in hash\n", .{});
+                    return error.TestUnexpectedResult;
+                };
+                try testIntegerObject(entry.value, pair.value);
+            }
+        },
         .null => try testNullObject(obj),
     }
 }
@@ -207,6 +244,38 @@ test "string expressions" {
         .{ .input = "\"monkey\"", .expected = .{ .string = "monkey" } },
         .{ .input = "\"mon\" + \"key\"", .expected = .{ .string = "monkey" } },
         .{ .input = "\"mon\" + \"key\" + \"banana\"", .expected = .{ .string = "monkeybanana" } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "array literals" {
+    const tests = [_]VmTestCase{
+        .{ .input = "[]", .expected = .{ .int_array = &.{} } },
+        .{ .input = "[1, 2, 3]", .expected = .{ .int_array = &.{ 1, 2, 3 } } },
+        .{ .input = "[1 + 2, 3 * 4, 5 + 6]", .expected = .{ .int_array = &.{ 3, 12, 11 } } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "hash literals" {
+    const tests = [_]VmTestCase{
+        .{ .input = "{}", .expected = .{ .int_hash = &.{} } },
+        .{
+            .input = "{1: 2, 2: 3}",
+            .expected = .{ .int_hash = &.{
+                .{ .key = (Object.Integer.init(1)).hashKey(), .value = 2 },
+                .{ .key = (Object.Integer.init(2)).hashKey(), .value = 3 },
+            } },
+        },
+        .{
+            .input = "{1 + 1: 2 * 2, 3 + 3: 4 * 4}",
+            .expected = .{ .int_hash = &.{
+                .{ .key = (Object.Integer.init(2)).hashKey(), .value = 4 },
+                .{ .key = (Object.Integer.init(6)).hashKey(), .value = 16 },
+            } },
+        },
     };
 
     try runVmTests(&tests);

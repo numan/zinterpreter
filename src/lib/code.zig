@@ -23,6 +23,7 @@ pub const Opcode = enum(u8) {
     set_global,
     get_global,
     array,
+    hash,
 };
 
 pub const Definition = struct {
@@ -50,6 +51,7 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .set_global = .{ .name = "OpSetGlobal", .operand_widths = &.{2} },
     .get_global = .{ .name = "OpGetGlobal", .operand_widths = &.{2} },
     .array = .{ .name = "OpArray", .operand_widths = &.{2} },
+    .hash = .{ .name = "OpHash", .operand_widths = &.{2} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -170,6 +172,7 @@ test "read operands" {
         .{ .op = .jump, .operands = &.{65535} },
         .{ .op = .op_null, .operands = &.{} },
         .{ .op = .array, .operands = &.{65535} },
+        .{ .op = .hash, .operands = &.{65535} },
         .{ .op = .pop, .operands = &.{} },
         .{ .op = .equal, .operands = &.{} },
         .{ .op = .not_equal, .operands = &.{} },
@@ -205,6 +208,7 @@ test "instructions string" {
         try make(testing.allocator, .jump, &.{65535}),
         try make(testing.allocator, .op_null, &.{}),
         try make(testing.allocator, .array, &.{65535}),
+        try make(testing.allocator, .hash, &.{65535}),
         try make(testing.allocator, .sub, &.{}),
         try make(testing.allocator, .mul, &.{}),
         try make(testing.allocator, .div, &.{}),
@@ -235,18 +239,19 @@ test "instructions string" {
         \\0014 OpJump 65535
         \\0017 OpNull
         \\0018 OpArray 65535
-        \\0021 OpSub
-        \\0022 OpMul
-        \\0023 OpDiv
-        \\0024 OpTrue
-        \\0025 OpFalse
-        \\0026 OpEqual
-        \\0027 OpNotEqual
-        \\0028 OpGreaterThan
-        \\0029 OpMinus
-        \\0030 OpBang
-        \\0031 OpSetGlobal 65535
-        \\0034 OpGetGlobal 65535
+        \\0021 OpHash 65535
+        \\0024 OpSub
+        \\0025 OpMul
+        \\0026 OpDiv
+        \\0027 OpTrue
+        \\0028 OpFalse
+        \\0029 OpEqual
+        \\0030 OpNotEqual
+        \\0031 OpGreaterThan
+        \\0032 OpMinus
+        \\0033 OpBang
+        \\0034 OpSetGlobal 65535
+        \\0037 OpGetGlobal 65535
         \\
     ;
 
@@ -371,6 +376,11 @@ test "make" {
             .op = .array,
             .operands = &.{65534},
             .expected = &.{ @intFromEnum(Opcode.array), 255, 254 },
+        },
+        .{
+            .op = .hash,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.hash), 255, 254 },
         },
     };
 

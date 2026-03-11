@@ -110,6 +110,8 @@ pub const Compiler = struct {
     fn evalExpression(self: *Self, expression: *const ExpressionType) !void {
         return switch (expression.*) {
             .string_literal => self.evalStringLiteral(&expression.string_literal),
+            .array_literal => self.evalArrayLiteral(&expression.array_literal),
+            .hash_literal => self.evalHashLiteral(&expression.hash_literal),
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
             .boolean_literal => self.evalBooleanLiteral(&expression.boolean_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
@@ -121,6 +123,24 @@ pub const Compiler = struct {
             },
             else => Error.UnsupportedNodeType,
         };
+    }
+
+    fn evalArrayLiteral(self: *Self, array_literal: *const ExpressionType.ArrayLiteral) !void {
+        const size = array_literal.elements.len;
+
+        for (array_literal.elements) |*i| {
+            try self.compile(i);
+        }
+
+        _ = try self.emit(.array, &.{size});
+    }
+
+    fn evalHashLiteral(self: *Self, hash_literal: *const ExpressionType.HashLiteral) !void {
+        for (hash_literal.pairs) |*pair| {
+            try self.compile(&pair.key.expression);
+            try self.compile(&pair.value.expression);
+        }
+        _ = try self.emit(.hash, &.{hash_literal.pairs.len * 2});
     }
 
     fn evalStringLiteral(self: *Self, string_literal: *const ExpressionType.StringLiteral) !void {

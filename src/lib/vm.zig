@@ -16,6 +16,7 @@ pub const globals_size = 65536;
 const Errors = error{
     StackOverflow,
     UnknownOpcode,
+    HashNotHashable,
 };
 
 pub const Vm = struct {
@@ -85,6 +86,20 @@ pub const Vm = struct {
                         ip = pos - 1; // loop will increment
                     }
                 },
+                .array => {
+                    const len = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip += 2; //skip operand
+                    const array = try self.buildArray(self.sp - len, self.sp);
+                    self.sp -= len; // remove array elements from stack
+                    try self.push(.{ .array = array });
+                },
+                .hash => {
+                    const num_elements = code.readUint16(self.instructions[ip + 1 ..]);
+                    ip += 2;
+                    const hash = try self.buildHash(self.sp - num_elements, self.sp);
+                    self.sp -= num_elements;
+                    try self.push(.{ .hash = hash });
+                },
                 .op_null => {
                     try self.push(Null);
                 },
@@ -118,7 +133,6 @@ pub const Vm = struct {
                 .pop => {
                     _ = try self.pop();
                 },
-                else => return Errors.UnknownOpcode,
             }
             ip += 1;
         }
@@ -175,6 +189,27 @@ pub const Vm = struct {
         const str = try self.allocator.create(Object.String);
         str.* = Object.String.init(concat);
         try self.push(.{ .string = str });
+    }
+
+    fn buildArray(self: *Vm, start_index: usize, end_index: usize) !*Object.Array {
+        const elements = try self.allocator.dupe(Object, self.stack[start_index..end_index]);
+        const array = try self.allocator.create(Object.Array);
+        array.* = Object.Array.init(elements);
+        return array;
+    }
+
+    fn buildHash(self: *Vm, start_index: usize, end_index: usize) !*Object.Hash {
+        var pairs = std.AutoHashMap(Object.HashKey, Object.HashPair).init(self.allocator);
+        var i = start_index;
+        while (i < end_index) : (i += 2) {
+            const key = self.stack[i];
+            const value = self.stack[i + 1];
+            const hash_key = key.hashKey() orelse return Errors.HashNotHashable;
+            try pairs.put(hash_key, .{ .key = key, .value = value });
+        }
+        const hash = try self.allocator.create(Object.Hash);
+        hash.* = .{ .pairs = pairs };
+        return hash;
     }
 
     fn nativeBoolToBooleanObject(value: bool) Object {
