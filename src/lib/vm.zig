@@ -24,14 +24,16 @@ pub const Vm = struct {
     stack: [stack_size]Object,
     sp: usize, // stack pointer — always points to next free slot
     globals: *[globals_size]Object,
+    allocator: std.mem.Allocator,
 
-    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object) Vm {
+    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) Vm {
         return .{
             .constants = bytecode.constants,
             .instructions = bytecode.instructions,
             .stack = undefined,
             .sp = 0,
             .globals = globals,
+            .allocator = allocator,
         };
     }
 
@@ -58,25 +60,7 @@ pub const Vm = struct {
                 .add, .sub, .mul, .div => {
                     const right = try self.pop();
                     const left = try self.pop();
-
-                    const left_int = switch (left) {
-                        .int => |v| v.value,
-                        else => return Errors.UnknownOpcode,
-                    };
-                    const right_int = switch (right) {
-                        .int => |v| v.value,
-                        else => return Errors.UnknownOpcode,
-                    };
-
-                    const result = switch (op) {
-                        .add => left_int + right_int,
-                        .sub => left_int - right_int,
-                        .mul => left_int * right_int,
-                        .div => @divTrunc(left_int, right_int),
-                        else => unreachable,
-                    };
-
-                    try self.push(.{ .int = Object.Integer.init(result) });
+                    try self.executeBinaryOp(op, left, right);
                 },
                 .op_true => {
                     try self.push(True);
@@ -162,6 +146,34 @@ pub const Vm = struct {
         };
 
         try self.push(nativeBoolToBooleanObject(result));
+    }
+
+    fn executeBinaryOp(self: *Vm, op: code.Opcode, left: Object, right: Object) !void {
+        if (left == .int and right == .int) {
+            return self.executeBinaryIntegerOp(op, left.int.value, right.int.value);
+        }
+        if (op == .add and left == .string and right == .string) {
+            return self.executeStringConcatenation(left.string.value, right.string.value);
+        }
+        return Errors.UnknownOpcode;
+    }
+
+    fn executeBinaryIntegerOp(self: *Vm, op: code.Opcode, left: i64, right: i64) !void {
+        const result = switch (op) {
+            .add => left + right,
+            .sub => left - right,
+            .mul => left * right,
+            .div => @divTrunc(left, right),
+            else => unreachable,
+        };
+        try self.push(.{ .int = Object.Integer.init(result) });
+    }
+
+    fn executeStringConcatenation(self: *Vm, left: []const u8, right: []const u8) !void {
+        const concat = try std.mem.concat(self.allocator, u8, &.{ left, right });
+        const str = try self.allocator.create(Object.String);
+        str.* = Object.String.init(concat);
+        try self.push(.{ .string = str });
     }
 
     fn nativeBoolToBooleanObject(value: bool) Object {

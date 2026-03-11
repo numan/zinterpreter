@@ -14,6 +14,7 @@ const Compiler = compiler.Compiler;
 const Expected = union(enum) {
     int: i64,
     boolean: bool,
+    string: []const u8,
     null,
 };
 
@@ -57,10 +58,22 @@ fn testNullObject(obj: Object) !void {
     }
 }
 
+fn testStringObject(expected: []const u8, obj: Object) !void {
+    const str = switch (obj) {
+        .string => |value| value,
+        else => {
+            std.debug.print("object is not String. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqualStrings(expected, str.value);
+}
+
 fn testExpectedObject(expected: Expected, obj: Object) !void {
     switch (expected) {
         .int => |val| try testIntegerObject(val, obj),
         .boolean => |val| try testBooleanObject(val, obj),
+        .string => |val| try testStringObject(val, obj),
         .null => try testNullObject(obj),
     }
 }
@@ -84,8 +97,10 @@ fn runVmTests(tests: []const VmTestCase) !void {
         defer comp.deinit();
         try comp.compile(program);
 
+        var vm_arena = std.heap.ArenaAllocator.init(allocator);
+        defer vm_arena.deinit();
         var globals: [vm_mod.globals_size]Object = undefined;
-        var vm = Vm.init(comp.bytecode(), &globals);
+        var vm = Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
         try vm.run();
 
         const stack_elem = vm.lastPoppedStackElem() orelse {
@@ -182,6 +197,16 @@ test "let statements" {
         .{ .input = "let one = 1; let two = one; two;", .expected = .{ .int = 1 } },
         .{ .input = "let x = 5; x;", .expected = .{ .int = 5 } },
         .{ .input = "let x = 5; let y = 10; x + y;", .expected = .{ .int = 15 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "string expressions" {
+    const tests = [_]VmTestCase{
+        .{ .input = "\"monkey\"", .expected = .{ .string = "monkey" } },
+        .{ .input = "\"mon\" + \"key\"", .expected = .{ .string = "monkey" } },
+        .{ .input = "\"mon\" + \"key\" + \"banana\"", .expected = .{ .string = "monkeybanana" } },
     };
 
     try runVmTests(&tests);

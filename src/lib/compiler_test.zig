@@ -11,9 +11,11 @@ const SymbolTable = @import("./symbol_table.zig").SymbolTable;
 
 const Compiler = compiler.Compiler;
 
+const ExpectedConstant = union(enum) { int: i64, string: []const u8 };
+
 const CompilerTestCase = struct {
     input: []const u8,
-    expected_constants: []const i64,
+    expected_constants: []const ExpectedConstant,
     expected_instructions: []const []const u8,
 };
 
@@ -38,11 +40,14 @@ fn testInstructions(allocator: std.mem.Allocator, expected: []const []const u8, 
     }
 }
 
-fn testConstants(expected: []const i64, actual: []const Object) !void {
+fn testConstants(expected: []const ExpectedConstant, actual: []const Object) !void {
     try testing.expectEqual(expected.len, actual.len);
 
     for (expected, 0..) |constant, i| {
-        try testIntegerObject(constant, actual[i]);
+        switch (constant) {
+            .int => |exp| try testIntegerObject(exp, actual[i]),
+            .string => |exp| try testStringObject(exp, actual[i]),
+        }
     }
 }
 
@@ -56,6 +61,18 @@ fn testIntegerObject(expected: i64, obj: Object) !void {
     };
 
     try testing.expectEqual(expected, integer.value);
+}
+
+fn testStringObject(expected: []const u8, obj: Object) !void {
+    const string = switch (obj) {
+        .string => |value| value,
+        else => {
+            std.debug.print("object is not String. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqualStrings(expected, string.value);
 }
 
 fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCase) !void {
@@ -101,7 +118,7 @@ test "integer arithmetic" {
     const tests = [_]CompilerTestCase{
         .{
             .input = "1 + 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -111,7 +128,7 @@ test "integer arithmetic" {
         },
         .{
             .input = "1 - 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -121,7 +138,7 @@ test "integer arithmetic" {
         },
         .{
             .input = "1 * 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -131,7 +148,7 @@ test "integer arithmetic" {
         },
         .{
             .input = "6 / 3",
-            .expected_constants = &.{ 6, 3 },
+            .expected_constants = &.{ .{ .int = 6 }, .{ .int = 3 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -141,7 +158,7 @@ test "integer arithmetic" {
         },
         .{
             .input = "1; 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_pop,
@@ -203,7 +220,7 @@ test "boolean expressions" {
         },
         .{
             .input = "1 > 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -213,7 +230,7 @@ test "boolean expressions" {
         },
         .{
             .input = "1 < 2",
-            .expected_constants = &.{ 2, 1 },
+            .expected_constants = &.{ .{ .int = 2 }, .{ .int = 1 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -223,7 +240,7 @@ test "boolean expressions" {
         },
         .{
             .input = "1 == 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -233,7 +250,7 @@ test "boolean expressions" {
         },
         .{
             .input = "1 != 2",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_constant_1,
@@ -285,7 +302,7 @@ test "prefix expressions" {
     const tests = [_]CompilerTestCase{
         .{
             .input = "-1",
-            .expected_constants = &.{1},
+            .expected_constants = &.{.{ .int = 1 }},
             .expected_instructions = &.{
                 op_constant_0,
                 op_minus,
@@ -340,7 +357,7 @@ test "conditionals" {
     const tests = [_]CompilerTestCase{
         .{
             .input = "if (true) { 10 }; 3333;",
-            .expected_constants = &.{ 10, 3333 },
+            .expected_constants = &.{ .{ .int = 10 }, .{ .int = 3333 } },
             .expected_instructions = &.{
                 op_true,
                 op_jump_not_truthy_10,
@@ -354,7 +371,7 @@ test "conditionals" {
         },
         .{
             .input = "if (true) { 10 } else { 20 }; 3333;",
-            .expected_constants = &.{ 10, 20, 3333 },
+            .expected_constants = &.{ .{ .int = 10 }, .{ .int = 20 }, .{ .int = 3333 } },
             .expected_instructions = &.{
                 op_true,
                 op_jump_not_truthy_10,
@@ -392,7 +409,7 @@ test "let statements" {
     const tests = [_]CompilerTestCase{
         .{
             .input = "let one = 1; let two = 2;",
-            .expected_constants = &.{ 1, 2 },
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
@@ -402,7 +419,7 @@ test "let statements" {
         },
         .{
             .input = "let one = 1; one;",
-            .expected_constants = &.{1},
+            .expected_constants = &.{.{ .int = 1 }},
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
@@ -412,13 +429,49 @@ test "let statements" {
         },
         .{
             .input = "let one = 1; let two = one; two;",
-            .expected_constants = &.{1},
+            .expected_constants = &.{.{ .int = 1 }},
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_set_global_1,
                 op_get_global_1,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
+test "string expressions" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_add = try code.make(allocator, .add, &.{});
+    defer allocator.free(op_add);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "\"monkey\"",
+            .expected_constants = &.{.{ .string = "monkey" }},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_pop,
+            },
+        },
+        .{
+            .input = "\"mon\" + \"key\"",
+            .expected_constants = &.{ .{ .string = "mon" }, .{ .string = "key" } },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_add,
                 op_pop,
             },
         },

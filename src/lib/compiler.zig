@@ -109,6 +109,7 @@ pub const Compiler = struct {
 
     fn evalExpression(self: *Self, expression: *const ExpressionType) !void {
         return switch (expression.*) {
+            .string_literal => self.evalStringLiteral(&expression.string_literal),
             .integer_literal => self.evalIntegerLiteral(&expression.integer_literal),
             .boolean_literal => self.evalBooleanLiteral(&expression.boolean_literal),
             .infix_expression => |*infix_expression| self.evalInfixExpression(infix_expression),
@@ -120,6 +121,14 @@ pub const Compiler = struct {
             },
             else => Error.UnsupportedNodeType,
         };
+    }
+
+    fn evalStringLiteral(self: *Self, string_literal: *const ExpressionType.StringLiteral) !void {
+        const heap_string_obj = try self.allocator().create(Object.String);
+        heap_string_obj.* = Object.String.init(string_literal.value);
+        const str_obj: Object = .{ .string = heap_string_obj };
+        const index = try self.addConstant(str_obj);
+        _ = try self.emit(.constant, &.{index});
     }
 
     fn evalIfExpression(self: *Self, if_expression: *const ExpressionType.IfExpression) !void {
