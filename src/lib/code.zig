@@ -24,6 +24,7 @@ pub const Opcode = enum(u8) {
     get_global,
     array,
     hash,
+    index,
 };
 
 pub const Definition = struct {
@@ -52,6 +53,7 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .get_global = .{ .name = "OpGetGlobal", .operand_widths = &.{2} },
     .array = .{ .name = "OpArray", .operand_widths = &.{2} },
     .hash = .{ .name = "OpHash", .operand_widths = &.{2} },
+    .index = .{ .name = "OpIndex", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -181,6 +183,7 @@ test "read operands" {
         .{ .op = .bang, .operands = &.{} },
         .{ .op = .set_global, .operands = &.{65535} },
         .{ .op = .get_global, .operands = &.{65535} },
+        .{ .op = .index, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -209,6 +212,7 @@ test "instructions string" {
         try make(testing.allocator, .op_null, &.{}),
         try make(testing.allocator, .array, &.{65535}),
         try make(testing.allocator, .hash, &.{65535}),
+        try make(testing.allocator, .index, &.{}),
         try make(testing.allocator, .sub, &.{}),
         try make(testing.allocator, .mul, &.{}),
         try make(testing.allocator, .div, &.{}),
@@ -240,18 +244,19 @@ test "instructions string" {
         \\0017 OpNull
         \\0018 OpArray 65535
         \\0021 OpHash 65535
-        \\0024 OpSub
-        \\0025 OpMul
-        \\0026 OpDiv
-        \\0027 OpTrue
-        \\0028 OpFalse
-        \\0029 OpEqual
-        \\0030 OpNotEqual
-        \\0031 OpGreaterThan
-        \\0032 OpMinus
-        \\0033 OpBang
-        \\0034 OpSetGlobal 65535
-        \\0037 OpGetGlobal 65535
+        \\0024 OpIndex
+        \\0025 OpSub
+        \\0026 OpMul
+        \\0027 OpDiv
+        \\0028 OpTrue
+        \\0029 OpFalse
+        \\0030 OpEqual
+        \\0031 OpNotEqual
+        \\0032 OpGreaterThan
+        \\0033 OpMinus
+        \\0034 OpBang
+        \\0035 OpSetGlobal 65535
+        \\0038 OpGetGlobal 65535
         \\
     ;
 
@@ -381,6 +386,11 @@ test "make" {
             .op = .hash,
             .operands = &.{65534},
             .expected = &.{ @intFromEnum(Opcode.hash), 255, 254 },
+        },
+        .{
+            .op = .index,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.index)},
         },
     };
 

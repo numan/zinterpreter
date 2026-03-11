@@ -100,6 +100,11 @@ pub const Vm = struct {
                     self.sp -= num_elements;
                     try self.push(.{ .hash = hash });
                 },
+                .index => {
+                    const index_val = try self.pop();
+                    const left = try self.pop();
+                    try self.executeIndexExpression(left, index_val);
+                },
                 .op_null => {
                     try self.push(Null);
                 },
@@ -222,6 +227,32 @@ pub const Vm = struct {
             .null => false,
             else => true,
         };
+    }
+
+    fn executeIndexExpression(self: *Vm, left: Object, index_val: Object) !void {
+        if (left == .array and index_val == .int) {
+            return self.executeArrayIndex(left.array, index_val.int.value);
+        }
+        if (left == .hash) {
+            return self.executeHashIndex(left.hash, index_val);
+        }
+        return Errors.UnknownOpcode;
+    }
+
+    fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) !void {
+        if (index < 0 or index >= @as(i64, @intCast(array.elements.len))) {
+            return self.push(Null);
+        }
+        return self.push(array.elements[@intCast(index)]);
+    }
+
+    fn executeHashIndex(self: *Vm, hash: *Object.Hash, index_val: Object) !void {
+        const hash_key = index_val.hashKey() orelse return Errors.HashNotHashable;
+        const pair = hash.pairs.get(hash_key);
+        if (pair) |p| {
+            return self.push(p.value);
+        }
+        return self.push(Null);
     }
 
     fn pop(self: *Vm) !Object {

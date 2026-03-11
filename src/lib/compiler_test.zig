@@ -627,3 +627,64 @@ test "array literals" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "index expressions" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_constant_3 = try code.make(allocator, .constant, &.{3});
+    defer allocator.free(op_constant_3);
+    const op_constant_4 = try code.make(allocator, .constant, &.{4});
+    defer allocator.free(op_constant_4);
+    const op_add = try code.make(allocator, .add, &.{});
+    defer allocator.free(op_add);
+    const op_sub = try code.make(allocator, .sub, &.{});
+    defer allocator.free(op_sub);
+    const op_array_3 = try code.make(allocator, .array, &.{3});
+    defer allocator.free(op_array_3);
+    const op_hash_2 = try code.make(allocator, .hash, &.{2});
+    defer allocator.free(op_hash_2);
+    const op_index = try code.make(allocator, .index, &.{});
+    defer allocator.free(op_index);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "[1, 2, 3][1 + 1]",
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 }, .{ .int = 3 }, .{ .int = 1 }, .{ .int = 1 } },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_constant_2,
+                op_array_3,
+                op_constant_3,
+                op_constant_4,
+                op_add,
+                op_index,
+                op_pop,
+            },
+        },
+        .{
+            .input = "{1: 2}[2 - 1]",
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 }, .{ .int = 2 }, .{ .int = 1 } },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_hash_2,
+                op_constant_2,
+                op_constant_3,
+                op_sub,
+                op_index,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}

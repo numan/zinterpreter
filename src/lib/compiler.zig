@@ -121,6 +121,11 @@ pub const Compiler = struct {
                 const sym = self.symbol_table.resolve(ident.value) orelse return Error.UndefinedVariable;
                 _ = try self.emit(.get_global, &.{sym.index});
             },
+            .index_expression => |*idx| {
+                try self.compile(&idx.left.expression);
+                try self.compile(&idx.index.expression);
+                _ = try self.emit(.index, &.{});
+            },
             else => Error.UnsupportedNodeType,
         };
     }

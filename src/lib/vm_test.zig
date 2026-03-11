@@ -280,3 +280,20 @@ test "hash literals" {
 
     try runVmTests(&tests);
 }
+
+test "index expressions" {
+    const tests = [_]VmTestCase{
+        .{ .input = "[1, 2, 3][1]", .expected = .{ .int = 2 } },
+        .{ .input = "[1, 2, 3][0 + 2]", .expected = .{ .int = 3 } },
+        .{ .input = "[[1, 1, 1]][0][0]", .expected = .{ .int = 1 } },
+        .{ .input = "[][0]", .expected = .null },
+        .{ .input = "[1, 2, 3][99]", .expected = .null },
+        .{ .input = "[1][-1]", .expected = .null },
+        .{ .input = "{1: 1, 2: 2}[1]", .expected = .{ .int = 1 } },
+        .{ .input = "{1: 1, 2: 2}[2]", .expected = .{ .int = 2 } },
+        .{ .input = "{1: 1}[0]", .expected = .null },
+        .{ .input = "{}[0]", .expected = .null },
+    };
+
+    try runVmTests(&tests);
+}
