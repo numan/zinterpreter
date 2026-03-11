@@ -22,6 +22,7 @@ pub const Opcode = enum(u8) {
     bang,
     set_global,
     get_global,
+    array,
 };
 
 pub const Definition = struct {
@@ -48,6 +49,7 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .bang = .{ .name = "OpBang", .operand_widths = &.{} },
     .set_global = .{ .name = "OpSetGlobal", .operand_widths = &.{2} },
     .get_global = .{ .name = "OpGetGlobal", .operand_widths = &.{2} },
+    .array = .{ .name = "OpArray", .operand_widths = &.{2} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -166,6 +168,16 @@ test "read operands" {
         .{ .op = .op_false, .operands = &.{} },
         .{ .op = .jump_not_truthy, .operands = &.{65535} },
         .{ .op = .jump, .operands = &.{65535} },
+        .{ .op = .op_null, .operands = &.{} },
+        .{ .op = .array, .operands = &.{65535} },
+        .{ .op = .pop, .operands = &.{} },
+        .{ .op = .equal, .operands = &.{} },
+        .{ .op = .not_equal, .operands = &.{} },
+        .{ .op = .greater_than, .operands = &.{} },
+        .{ .op = .minus, .operands = &.{} },
+        .{ .op = .bang, .operands = &.{} },
+        .{ .op = .set_global, .operands = &.{65535} },
+        .{ .op = .get_global, .operands = &.{65535} },
     };
 
     for (tests) |tt| {
@@ -191,6 +203,20 @@ test "instructions string" {
         try make(testing.allocator, .pop, &.{}),
         try make(testing.allocator, .jump_not_truthy, &.{65535}),
         try make(testing.allocator, .jump, &.{65535}),
+        try make(testing.allocator, .op_null, &.{}),
+        try make(testing.allocator, .array, &.{65535}),
+        try make(testing.allocator, .sub, &.{}),
+        try make(testing.allocator, .mul, &.{}),
+        try make(testing.allocator, .div, &.{}),
+        try make(testing.allocator, .op_true, &.{}),
+        try make(testing.allocator, .op_false, &.{}),
+        try make(testing.allocator, .equal, &.{}),
+        try make(testing.allocator, .not_equal, &.{}),
+        try make(testing.allocator, .greater_than, &.{}),
+        try make(testing.allocator, .minus, &.{}),
+        try make(testing.allocator, .bang, &.{}),
+        try make(testing.allocator, .set_global, &.{65535}),
+        try make(testing.allocator, .get_global, &.{65535}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -207,6 +233,20 @@ test "instructions string" {
         \\0010 OpPop
         \\0011 OpJumpNotTruthy 65535
         \\0014 OpJump 65535
+        \\0017 OpNull
+        \\0018 OpArray 65535
+        \\0021 OpSub
+        \\0022 OpMul
+        \\0023 OpDiv
+        \\0024 OpTrue
+        \\0025 OpFalse
+        \\0026 OpEqual
+        \\0027 OpNotEqual
+        \\0028 OpGreaterThan
+        \\0029 OpMinus
+        \\0030 OpBang
+        \\0031 OpSetGlobal 65535
+        \\0034 OpGetGlobal 65535
         \\
     ;
 
@@ -276,6 +316,61 @@ test "make" {
             .expected = &.{
                 @intFromEnum(Opcode.op_false),
             },
+        },
+        .{
+            .op = .equal,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.equal)},
+        },
+        .{
+            .op = .not_equal,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.not_equal)},
+        },
+        .{
+            .op = .greater_than,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.greater_than)},
+        },
+        .{
+            .op = .jump_not_truthy,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.jump_not_truthy), 255, 254 },
+        },
+        .{
+            .op = .jump,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.jump), 255, 254 },
+        },
+        .{
+            .op = .op_null,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.op_null)},
+        },
+        .{
+            .op = .minus,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.minus)},
+        },
+        .{
+            .op = .bang,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.bang)},
+        },
+        .{
+            .op = .set_global,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.set_global), 255, 254 },
+        },
+        .{
+            .op = .get_global,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.get_global), 255, 254 },
+        },
+        .{
+            .op = .array,
+            .operands = &.{65534},
+            .expected = &.{ @intFromEnum(Opcode.array), 255, 254 },
         },
     };
 

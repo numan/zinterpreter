@@ -7,22 +7,22 @@ const Environment = environment.Environment;
 
 pub const Gc = struct {
     allocator: std.mem.Allocator,
-    environments: std.ArrayList(*Environment) = .{},
-    functions: std.ArrayList(*Object.Function) = .{},
-    strings: std.ArrayList(*Object.String) = .{},
-    arrays: std.ArrayList(*Object.Array) = .{},
-    hashes: std.ArrayList(*Object.Hash) = .{},
+    environments: std.ArrayList(*Environment),
+    functions: std.ArrayList(*Object.Function),
+    strings: std.ArrayList(*Object.String),
+    arrays: std.ArrayList(*Object.Array),
+    hashes: std.ArrayList(*Object.Hash),
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .environments = .{},
-            .functions = .{},
-            .strings = .{},
-            .arrays = .{},
-            .hashes = .{},
+            .environments = .empty,
+            .functions = .empty,
+            .strings = .empty,
+            .arrays = .empty,
+            .hashes = .empty,
         };
     }
 
