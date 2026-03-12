@@ -128,11 +128,11 @@ pub const Object = union(enum) {
     pub const CompiledFunction = struct {
         instructions: []const u8,
 
-        fn init(instructions: []const u8) CompiledFunction {
+        pub fn init(instructions: []const u8) CompiledFunction {
             return .{ .instructions = instructions };
         }
 
-        pub fn inpect(self: *const Object.CompiledFunction, writer: *std.Io.Writer) !void {
+        pub fn inspect(self: *const Object.CompiledFunction, writer: *std.Io.Writer) !void {
             _ = self;
             try writer.writeAll("CompiledFunction");
             try writer.flush();

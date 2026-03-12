@@ -138,6 +138,7 @@ pub const Vm = struct {
                 .pop => {
                     _ = try self.pop();
                 },
+                .call, .return_value, .op_return => return Errors.UnknownOpcode,
             }
             ip += 1;
         }

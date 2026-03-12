@@ -49,7 +49,12 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
         if (errors.len != 0) {
             try printParseErrors(errors, stdout);
         } else {
-            var compiler = state.newCompiler();
+            var compiler = state.newCompiler() catch |err| {
+                try stdout.print("Compiler error: {s}\n", .{@errorName(err)});
+                try stdout.print("{s} ", .{PROMPT});
+                try stdout.flush();
+                continue;
+            };
             defer compiler.deinit();
 
             compiler.compile(program) catch |err| {
@@ -60,6 +65,12 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             };
 
             const bc = compiler.bytecode();
+
+            if (bc.instructions.len == 0) {
+                try stdout.print("{s} ", .{PROMPT});
+                try stdout.flush();
+                continue;
+            }
 
             var vm = state.newVm(bc);
             vm.run() catch |err| {

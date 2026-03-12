@@ -11,7 +11,11 @@ const SymbolTable = @import("./symbol_table.zig").SymbolTable;
 
 const Compiler = compiler.Compiler;
 
-const ExpectedConstant = union(enum) { int: i64, string: []const u8 };
+const ExpectedConstant = union(enum) {
+    int: i64,
+    string: []const u8,
+    instructions: []const code.Instructions,
+};
 
 const CompilerTestCase = struct {
     input: []const u8,
@@ -40,13 +44,20 @@ fn testInstructions(allocator: std.mem.Allocator, expected: []const []const u8, 
     }
 }
 
-fn testConstants(expected: []const ExpectedConstant, actual: []const Object) !void {
+fn testConstants(allocator: std.mem.Allocator, expected: []const ExpectedConstant, actual: []const Object) !void {
     try testing.expectEqual(expected.len, actual.len);
 
     for (expected, 0..) |constant, i| {
         switch (constant) {
             .int => |exp| try testIntegerObject(exp, actual[i]),
             .string => |exp| try testStringObject(exp, actual[i]),
+            .instructions => |exp| {
+                const fn_obj = switch (actual[i]) {
+                    .compiled_function => |f| f,
+                    else => return error.TestUnexpectedResult,
+                };
+                try testInstructions(allocator, exp, fn_obj.instructions);
+            },
         }
     }
 }
@@ -88,12 +99,13 @@ fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCas
         defer constants.deinit(allocator);
         var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
         defer comp.deinit();
+        try comp.enterScope();
         try comp.compile(program);
 
         const bytecode = comp.bytecode();
 
         try testInstructions(allocator, tt.expected_instructions, bytecode.instructions);
-        try testConstants(tt.expected_constants, bytecode.constants);
+        try testConstants(allocator, tt.expected_constants, bytecode.constants);
     }
 }
 
@@ -681,6 +693,45 @@ test "index expressions" {
                 op_constant_3,
                 op_sub,
                 op_index,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
+test "function literal expressions" {
+    const allocator = testing.allocator;
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_add = try code.make(allocator, .add, &.{});
+    defer allocator.free(op_add);
+    const op_return_value = try code.make(allocator, .return_value, &.{});
+    defer allocator.free(op_return_value);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "fn() { return 5 + 10; }",
+            .expected_constants = &.{
+                .{ .int = 5 }, .{ .int = 10 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_0,
+                        op_constant_1,
+                        op_add,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_2,
                 op_pop,
             },
         },

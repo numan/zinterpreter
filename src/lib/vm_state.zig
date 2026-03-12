@@ -34,8 +34,10 @@ pub const VmState = struct {
         self.vm_arena.deinit();
     }
 
-    pub fn newCompiler(self: *VmState) Compiler {
-        return Compiler.init(self.allocator, &self.symbol_table, &self.constants, self.allocator);
+    pub fn newCompiler(self: *VmState) !Compiler {
+        var comp = Compiler.init(self.allocator, &self.symbol_table, &self.constants, self.allocator);
+        try comp.enterScope();
+        return comp;
     }
 
     pub fn newVm(self: *VmState, bytecode: Bytecode) Vm {

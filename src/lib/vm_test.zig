@@ -132,6 +132,7 @@ fn runVmTests(tests: []const VmTestCase) !void {
         defer constants.deinit(allocator);
         var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
         defer comp.deinit();
+        try comp.enterScope();
         try comp.compile(program);
 
         var vm_arena = std.heap.ArenaAllocator.init(allocator);
