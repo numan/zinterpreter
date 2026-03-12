@@ -10,6 +10,7 @@ pub const Object = union(enum) {
     bool: Boolean,
     null: Null,
     err: Error,
+    compiled_function: *CompiledFunction,
     function: *Function,
     string: *String,
     array: *Array,
@@ -120,6 +121,20 @@ pub const Object = union(enum) {
         pub fn inspect(self: *const Object.Null, writer: *std.Io.Writer) !void {
             _ = self;
             try writer.writeAll("null");
+            try writer.flush();
+        }
+    };
+
+    pub const CompiledFunction = struct {
+        instructions: []const u8,
+
+        fn init(instructions: []const u8) CompiledFunction {
+            return .{ .instructions = instructions };
+        }
+
+        pub fn inpect(self: *const Object.CompiledFunction, writer: *std.Io.Writer) !void {
+            _ = self;
+            try writer.writeAll("CompiledFunction");
             try writer.flush();
         }
     };

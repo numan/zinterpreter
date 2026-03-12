@@ -25,6 +25,9 @@ pub const Opcode = enum(u8) {
     array,
     hash,
     index,
+    call,
+    return_value,
+    op_return,
 };
 
 pub const Definition = struct {
@@ -54,6 +57,9 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .array = .{ .name = "OpArray", .operand_widths = &.{2} },
     .hash = .{ .name = "OpHash", .operand_widths = &.{2} },
     .index = .{ .name = "OpIndex", .operand_widths = &.{} },
+    .call = .{ .name = "OpCall", .operand_widths = &.{1} },
+    .return_value = .{ .name = "OpReturnValue", .operand_widths = &.{} },
+    .op_return = .{ .name = "OpReturn", .operand_widths = &.{} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -184,6 +190,9 @@ test "read operands" {
         .{ .op = .set_global, .operands = &.{65535} },
         .{ .op = .get_global, .operands = &.{65535} },
         .{ .op = .index, .operands = &.{} },
+        .{ .op = .call, .operands = &.{255} },
+        .{ .op = .return_value, .operands = &.{} },
+        .{ .op = .op_return, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -225,6 +234,9 @@ test "instructions string" {
         try make(testing.allocator, .bang, &.{}),
         try make(testing.allocator, .set_global, &.{65535}),
         try make(testing.allocator, .get_global, &.{65535}),
+        try make(testing.allocator, .call, &.{255}),
+        try make(testing.allocator, .return_value, &.{}),
+        try make(testing.allocator, .op_return, &.{}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -257,6 +269,9 @@ test "instructions string" {
         \\0034 OpBang
         \\0035 OpSetGlobal 65535
         \\0038 OpGetGlobal 65535
+        \\0041 OpCall 255
+        \\0043 OpReturnValue
+        \\0044 OpReturn
         \\
     ;
 
@@ -391,6 +406,21 @@ test "make" {
             .op = .index,
             .operands = &.{},
             .expected = &.{@intFromEnum(Opcode.index)},
+        },
+        .{
+            .op = .call,
+            .operands = &.{254},
+            .expected = &.{ @intFromEnum(Opcode.call), 254 },
+        },
+        .{
+            .op = .return_value,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.return_value)},
+        },
+        .{
+            .op = .op_return,
+            .operands = &.{},
+            .expected = &.{@intFromEnum(Opcode.op_return)},
         },
     };
 
