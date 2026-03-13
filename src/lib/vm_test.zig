@@ -138,7 +138,7 @@ fn runVmTests(tests: []const VmTestCase) !void {
         var vm_arena = std.heap.ArenaAllocator.init(allocator);
         defer vm_arena.deinit();
         var globals: [vm_mod.globals_size]Object = undefined;
-        var vm = Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
+        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
         try vm.run();
 
         const stack_elem = vm.lastPoppedStackElem() orelse {
@@ -294,6 +294,96 @@ test "index expressions" {
         .{ .input = "{1: 1, 2: 2}[2]", .expected = .{ .int = 2 } },
         .{ .input = "{1: 1}[0]", .expected = .null },
         .{ .input = "{}[0]", .expected = .null },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "calling functions without arguments" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let fivePlusTen = fn() { 5 + 10; };
+                \\fivePlusTen();
+            ,
+            .expected = .{ .int = 15 },
+        },
+        .{
+            .input =
+                \\let one = fn() { 1; };
+                \\let two = fn() { 2; };
+                \\one() + two();
+            ,
+            .expected = .{ .int = 3 },
+        },
+        .{
+            .input =
+                \\let a = fn() { 1; };
+                \\let b = fn() { a() + 1; };
+                \\let c = fn() { b() + 1; };
+                \\c();
+            ,
+            .expected = .{ .int = 3 },
+        },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "calling functions with return statement" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let earlyExit = fn() { return 99; 100; };
+                \\earlyExit();
+            ,
+            .expected = .{ .int = 99 },
+        },
+        .{
+            .input =
+                \\let earlyExit = fn() { return 99; return 100; };
+                \\earlyExit();
+            ,
+            .expected = .{ .int = 99 },
+        },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "calling functions without return value" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let noReturn = fn() { };
+                \\noReturn();
+            ,
+            .expected = .null,
+        },
+        .{
+            .input =
+                \\let noReturn = fn() { };
+                \\let noReturnTwo = fn() { noReturn(); };
+                \\noReturn();
+                \\noReturnTwo();
+            ,
+            .expected = .null,
+        },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "first class functions" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let returnsOne = fn() { 1; };
+                \\let returnsOneReturner = fn() { returnsOne; };
+                \\returnsOneReturner()();
+            ,
+            .expected = .{ .int = 1 },
+        },
     };
 
     try runVmTests(&tests);

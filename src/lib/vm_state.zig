@@ -40,7 +40,7 @@ pub const VmState = struct {
         return comp;
     }
 
-    pub fn newVm(self: *VmState, bytecode: Bytecode) Vm {
+    pub fn newVm(self: *VmState, bytecode: Bytecode) !Vm {
         return Vm.init(bytecode, &self.globals, self.vm_arena.allocator());
     }
 };

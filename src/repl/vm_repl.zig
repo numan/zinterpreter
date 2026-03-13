@@ -72,7 +72,10 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
                 continue;
             }
 
-            var vm = state.newVm(bc);
+            var vm = state.newVm(bc) catch |err| {
+                try stdout.print("VM error: {s}\n", .{@errorName(err)});
+                continue;
+            };
             vm.run() catch |err| {
                 try stdout.print("VM error: {s}\n", .{@errorName(err)});
                 try stdout.print("{s} ", .{PROMPT});

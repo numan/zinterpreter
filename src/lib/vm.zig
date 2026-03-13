@@ -2,9 +2,11 @@ const std = @import("std");
 const code = @import("code.zig");
 const compiler = @import("compiler.zig");
 const object = @import("object.zig");
+const frame = @import("frame.zig");
 
 const Object = object.Object;
 const Bytecode = compiler.Bytecode;
+const Frame = frame.Frame;
 
 const True = Object{ .bool = Object.Boolean.init(true) };
 const False = Object{ .bool = Object.Boolean.init(false) };
@@ -12,30 +14,53 @@ const Null = Object{ .null = Object.Null.init() };
 
 const stack_size = 2048;
 pub const globals_size = 65536;
+const max_frames = 1024;
 
 const Errors = error{
     StackOverflow,
     UnknownOpcode,
     HashNotHashable,
+    UndefinedError,
 };
 
 pub const Vm = struct {
     constants: []Object,
-    instructions: code.Instructions,
     stack: [stack_size]Object,
     sp: usize, // stack pointer — always points to next free slot
     globals: *[globals_size]Object,
     allocator: std.mem.Allocator,
+    frames: [max_frames]Frame = undefined,
+    frame_index: usize,
 
-    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) Vm {
-        return .{
+    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) !Vm {
+        const main_fn = try allocator.create(Object.CompiledFunction);
+        main_fn.* = .{ .instructions = bytecode.instructions };
+
+        var vm = Vm{
             .constants = bytecode.constants,
-            .instructions = bytecode.instructions,
             .stack = undefined,
             .sp = 0,
             .globals = globals,
             .allocator = allocator,
+            .frames = undefined,
+            .frame_index = 1,
         };
+        vm.frames[0] = Frame.init(main_fn);
+        return vm;
+    }
+
+    pub fn currentFrame(self: *Vm) *Frame {
+        return &self.frames[self.frame_index - 1];
+    }
+
+    pub fn pushFrame(self: *Vm, f: Frame) void {
+        self.frames[self.frame_index] = f;
+        self.frame_index += 1;
+    }
+
+    pub fn popFrame(self: *Vm) *Frame {
+        self.frame_index -= 1;
+        return &self.frames[self.frame_index];
     }
 
     pub fn stackTop(self: *const Vm) ?Object {
@@ -49,13 +74,15 @@ pub const Vm = struct {
     }
 
     pub fn run(self: *Vm) !void {
-        var ip: usize = 0;
-        while (ip < self.instructions.len) {
-            const op: code.Opcode = @enumFromInt(self.instructions[ip]);
+        while (self.currentFrame().ip < self.currentFrame().instructions().len) {
+            const ins = self.currentFrame().instructions();
+            const ip = self.currentFrame().ip;
+            const op: code.Opcode = @enumFromInt(ins[ip]);
+            self.currentFrame().ip += 1;
             switch (op) {
                 .constant => {
-                    const const_index = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2;
+                    const const_index = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2;
                     try self.push(self.constants[const_index]);
                 },
                 .add, .sub, .mul, .div => {
@@ -75,27 +102,27 @@ pub const Vm = struct {
                     try self.executeComparison(op, left, right);
                 },
                 .jump => {
-                    const pos = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip = pos - 1; // loop will increment
+                    const pos = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip = pos;
                 },
                 .jump_not_truthy => {
-                    const pos = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2; // skip operand
+                    const pos = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2; // skip operand
                     const condition = try self.pop();
                     if (!isTruthy(condition)) {
-                        ip = pos - 1; // loop will increment
+                        self.currentFrame().ip = pos;
                     }
                 },
                 .array => {
-                    const len = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2; //skip operand
+                    const len = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2; //skip operand
                     const array = try self.buildArray(self.sp - len, self.sp);
                     self.sp -= len; // remove array elements from stack
                     try self.push(.{ .array = array });
                 },
                 .hash => {
-                    const num_elements = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2;
+                    const num_elements = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2;
                     const hash = try self.buildHash(self.sp - num_elements, self.sp);
                     self.sp -= num_elements;
                     try self.push(.{ .hash = hash });
@@ -126,21 +153,43 @@ pub const Vm = struct {
                     try self.push(result);
                 },
                 .set_global => {
-                    const global_index = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2;
+                    const global_index = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2;
                     self.globals[global_index] = try self.pop();
                 },
                 .get_global => {
-                    const global_index = code.readUint16(self.instructions[ip + 1 ..]);
-                    ip += 2;
+                    const global_index = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2;
                     try self.push(self.globals[global_index]);
                 },
                 .pop => {
                     _ = try self.pop();
                 },
-                .call, .return_value, .op_return => return Errors.UnknownOpcode,
+                .call => {
+                    self.currentFrame().ip += 1; // skip 1-byte operand (num args)
+                    const top_obj = self.stackTop() orelse return Errors.UndefinedError;
+                    const compiled_fn = switch (top_obj) {
+                        .compiled_function => |o| o,
+                        else => return error.UndefinedError,
+                    };
+
+                    const fn_frame = Frame.init(compiled_fn);
+                    self.pushFrame(fn_frame);
+                },
+                .return_value => {
+                    const return_val = try self.pop();
+                    _ = self.popFrame();
+                    // pop the function object from the caller's stack
+                    _ = try self.pop();
+                    try self.push(return_val);
+                },
+                .op_return => {
+                    _ = self.popFrame();
+                    // pop the function object from the caller's stack
+                    _ = try self.pop();
+                    try self.push(Null);
+                },
             }
-            ip += 1;
         }
     }
 
