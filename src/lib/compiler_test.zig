@@ -715,6 +715,8 @@ test "function literal expressions" {
     defer allocator.free(op_return_value);
     const op_pop = try code.make(allocator, .pop, &.{});
     defer allocator.free(op_pop);
+    const op_return = try code.make(allocator, .op_return, &.{});
+    defer allocator.free(op_return);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -732,6 +734,102 @@ test "function literal expressions" {
             },
             .expected_instructions = &.{
                 op_constant_2,
+                op_pop,
+            },
+        },
+        .{
+            .input = "fn() {  5 + 10; }",
+            .expected_constants = &.{
+                .{ .int = 5 }, .{ .int = 10 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_0,
+                        op_constant_1,
+                        op_add,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_2,
+                op_pop,
+            },
+        },
+
+        .{
+            .input = "fn() {   }",
+            .expected_constants = &.{
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_return,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
+test "function calls" {
+    const allocator = testing.allocator;
+
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_return_value = try code.make(allocator, .return_value, &.{});
+    defer allocator.free(op_return_value);
+    const op_call = try code.make(allocator, .call, &.{0});
+    defer allocator.free(op_call);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
+    defer allocator.free(op_set_global_0);
+    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
+    defer allocator.free(op_get_global_0);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "fn() { 24 }();",
+            .expected_constants = &.{
+                .{ .int = 24 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_0,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_1,
+                op_call,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+            \\let noArg = fn() { 24 };
+            \\noArg();
+            ,
+            .expected_constants = &.{
+                .{ .int = 24 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_0,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_1,
+                op_set_global_0,
+                op_get_global_0,
+                op_call,
                 op_pop,
             },
         },

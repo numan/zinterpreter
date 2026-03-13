@@ -152,8 +152,14 @@ pub const Compiler = struct {
             .function_literal => |*fn_lit| {
                 try self.compileFunctionLiteral(fn_lit);
             },
+            .call_expression => |*val| self.compileCallExpression(val),
             else => Error.UnsupportedNodeType,
         };
+    }
+
+    fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {
+        try self.compile(call_expression.function);
+        _ = try self.emit(.call, &.{call_expression.arguments.len});
     }
 
     fn compileArrayLiteral(self: *Self, array_literal: *const ExpressionType.ArrayLiteral) !void {
@@ -189,7 +195,7 @@ pub const Compiler = struct {
 
         try self.compile(&if_expression.consequence);
 
-        self.removeLastPop();
+        self.removeLast(.pop);
 
         // Always emit OpJump after consequence
         const jump_pos = try self.emit(.jump, &.{9999});
@@ -198,7 +204,7 @@ pub const Compiler = struct {
 
         if (if_expression.alternative) |*alt| {
             try self.compile(alt);
-            self.removeLastPop();
+            self.removeLast(.pop);
         } else {
             _ = try self.emit(.op_null, &.{});
         }
@@ -260,6 +266,12 @@ pub const Compiler = struct {
 
         try self.compile(&fn_lit.body);
 
+        try self.replaceLastPopWithReturn();
+
+        if (!self.lastInstructionIs(.return_value)) {
+            _ = try self.emit(.op_return, &.{});
+        }
+
         const instructions = self.leaveScope() orelse return Error.OperationNotSupported;
 
         const compiled_fn = try self.allocator().create(Object.CompiledFunction);
@@ -317,15 +329,32 @@ pub const Compiler = struct {
         self.replaceInstruction(op_pos, new_instruction);
     }
 
-    fn lastInstructionIsPop(self: *Self) bool {
+    fn replaceLastPopWithReturn(self: *Self) !void {
+        if (!self.lastInstructionIs(.pop)) {
+            return;
+        }
+
+        const current_scope = self.currentScope();
+
+        if (current_scope.last_instruction == null) {
+            return Error.OperationNotSupported;
+        }
+
+        const last_pos = self.currentScope().last_instruction.?.position;
+        const return_instruction = try code.make(self.allocator(), .return_value, &.{});
+        self.replaceInstruction(last_pos, return_instruction);
+        current_scope.last_instruction.?.opcode = .return_value;
+    }
+
+    fn lastInstructionIs(self: *Self, op: code.Opcode) bool {
         if (self.currentScope().last_instruction) |last| {
-            return last.opcode == .pop;
+            return last.opcode == op;
         }
         return false;
     }
 
-    fn removeLastPop(self: *Self) void {
-        if (self.lastInstructionIsPop()) {
+    fn removeLast(self: *Self, op: code.Opcode) void {
+        if (self.lastInstructionIs(op)) {
             const scope = self.currentScope();
             scope.instructions.items = scope.instructions.items[0..scope.last_instruction.?.position];
             scope.last_instruction = scope.previous_instruction;
