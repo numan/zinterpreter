@@ -173,6 +173,9 @@ pub const Compiler = struct {
 
     fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {
         try self.compile(call_expression.function);
+        for (call_expression.arguments) |*arg| {
+            try self.compile(arg);
+        }
         _ = try self.emit(.call, &.{call_expression.arguments.len});
     }
 
@@ -278,6 +281,10 @@ pub const Compiler = struct {
     fn compileFunctionLiteral(self: *Self, fn_lit: *const ExpressionType.FunctionLiteral) !void {
         try self.enterScope();
 
+        for (fn_lit.*.parameters) |*param| {
+            _ = try self.symbol_table.define(param.*.value);
+        }
+
         try self.compile(&fn_lit.body);
 
         try self.replaceLastPopWithReturn();
@@ -290,7 +297,7 @@ pub const Compiler = struct {
         const instructions = result.instructions orelse return Error.OperationNotSupported;
 
         const compiled_fn = try self.allocator().create(Object.CompiledFunction);
-        compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals);
+        compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals, fn_lit.parameters.len);
         _ = try self.emit(.constant, &.{
             try self.addConstant(.{
                 .compiled_function = compiled_fn,

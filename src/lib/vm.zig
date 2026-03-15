@@ -21,6 +21,7 @@ const Errors = error{
     UnknownOpcode,
     HashNotHashable,
     UndefinedError,
+    WrongArgumentCount,
 };
 
 pub const Vm = struct {
@@ -34,7 +35,7 @@ pub const Vm = struct {
 
     pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) !Vm {
         const main_fn = try allocator.create(Object.CompiledFunction);
-        main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0 };
+        main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
 
         var vm = Vm{
             .constants = bytecode.constants,
@@ -176,14 +177,20 @@ pub const Vm = struct {
                     _ = try self.pop();
                 },
                 .call => {
-                    self.currentFrame().ip += 1; // skip 1-byte operand (num args)
-                    const top_obj = self.stackTop() orelse return Errors.UndefinedError;
+                    const num_args = code.readUint8(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 1;
+
+                    const top_obj = self.stack[self.sp - 1 - num_args];
                     const compiled_fn = switch (top_obj) {
                         .compiled_function => |o| o,
                         else => return error.UndefinedError,
                     };
 
-                    const fn_frame = Frame.init(compiled_fn, self.sp);
+                    if (num_args != compiled_fn.num_parameters) {
+                        return error.WrongArgumentCount;
+                    }
+
+                    const fn_frame = Frame.init(compiled_fn, self.sp - num_args);
                     self.sp = fn_frame.base_pointer + compiled_fn.num_locals;
                     self.pushFrame(fn_frame);
                 },

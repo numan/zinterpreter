@@ -122,6 +122,10 @@ pub inline fn readUint16(ins: Instructions) u16 {
     return std.mem.readInt(u16, ins[0..2], .big);
 }
 
+pub inline fn readUint8(ins: Instructions) u8 {
+    return std.mem.readInt(u8, ins[0..1], .big);
+}
+
 pub fn readOperands(def: Definition, ins: Instructions) ReadOperandsResult {
     var result = ReadOperandsResult{};
     var offset: usize = 0;

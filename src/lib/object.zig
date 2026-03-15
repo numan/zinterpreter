@@ -128,9 +128,10 @@ pub const Object = union(enum) {
     pub const CompiledFunction = struct {
         instructions: []const u8,
         num_locals: usize,
+        num_parameters: usize,
 
-        pub fn init(instructions: []const u8, num_locals: usize) CompiledFunction {
-            return .{ .instructions = instructions, .num_locals = num_locals };
+        pub fn init(instructions: []const u8, num_locals: usize, num_parameters: usize) CompiledFunction {
+            return .{ .instructions = instructions, .num_locals = num_locals, .num_parameters = num_parameters };
         }
 
         pub fn inspect(self: *const Object.CompiledFunction, writer: *std.Io.Writer) !void {

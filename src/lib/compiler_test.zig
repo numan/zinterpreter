@@ -877,14 +877,30 @@ test "function calls" {
     defer allocator.free(op_constant_1);
     const op_return_value = try code.make(allocator, .return_value, &.{});
     defer allocator.free(op_return_value);
-    const op_call = try code.make(allocator, .call, &.{0});
-    defer allocator.free(op_call);
+    const op_call_0 = try code.make(allocator, .call, &.{0});
+    defer allocator.free(op_call_0);
+    const op_call_1 = try code.make(allocator, .call, &.{1});
+    defer allocator.free(op_call_1);
+    const op_call_3 = try code.make(allocator, .call, &.{3});
+    defer allocator.free(op_call_3);
     const op_pop = try code.make(allocator, .pop, &.{});
     defer allocator.free(op_pop);
     const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
     defer allocator.free(op_set_global_0);
     const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
     defer allocator.free(op_get_global_0);
+    const op_return = try code.make(allocator, .op_return, &.{});
+    defer allocator.free(op_return);
+    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
+    defer allocator.free(op_get_local_0);
+    const op_get_local_1 = try code.make(allocator, .get_local, &.{1});
+    defer allocator.free(op_get_local_1);
+    const op_get_local_2 = try code.make(allocator, .get_local, &.{2});
+    defer allocator.free(op_get_local_2);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_constant_3 = try code.make(allocator, .constant, &.{3});
+    defer allocator.free(op_constant_3);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -900,7 +916,7 @@ test "function calls" {
             },
             .expected_instructions = &.{
                 op_constant_1,
-                op_call,
+                op_call_0,
                 op_pop,
             },
         },
@@ -922,7 +938,61 @@ test "function calls" {
                 op_constant_1,
                 op_set_global_0,
                 op_get_global_0,
-                op_call,
+                op_call_0,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+            \\let oneArg = fn(a) { a };
+            \\oneArg(24);
+            ,
+            .expected_constants = &.{
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_local_0,
+                        op_return_value,
+                    },
+                },
+                .{ .int = 24 },
+            },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_constant_1,
+                op_call_1,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+            \\let manyArg = fn(a, b, c) { a; b; c };
+            \\manyArg(24, 25, 26);
+            ,
+            .expected_constants = &.{
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_local_0,
+                        op_pop,
+                        op_get_local_1,
+                        op_pop,
+                        op_get_local_2,
+                        op_return_value,
+                    },
+                },
+                .{ .int = 24 },
+                .{ .int = 25 },
+                .{ .int = 26 },
+            },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_constant_1,
+                op_constant_2,
+                op_constant_3,
+                op_call_3,
                 op_pop,
             },
         },

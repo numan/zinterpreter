@@ -435,3 +435,110 @@ test "first class functions" {
 
     try runVmTests(&tests);
 }
+
+test "calling functions with arguments and bindings" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let identity = fn(a) { a; };
+                \\identity(4);
+            ,
+            .expected = .{ .int = 4 },
+        },
+        .{
+            .input =
+                \\let sum = fn(a, b) { a + b; };
+                \\sum(1, 2);
+            ,
+            .expected = .{ .int = 3 },
+        },
+        .{
+            .input =
+                \\let sum = fn(a, b) {
+                \\    let c = a + b;
+                \\    c;
+                \\};
+                \\sum(1, 2);
+            ,
+            .expected = .{ .int = 3 },
+        },
+        .{
+            .input =
+                \\let sum = fn(a, b) {
+                \\    let c = a + b;
+                \\    c;
+                \\};
+                \\sum(1, 2) + sum(3, 4);
+            ,
+            .expected = .{ .int = 10 },
+        },
+        .{
+            .input =
+                \\let sum = fn(a, b) {
+                \\    let c = a + b;
+                \\    c;
+                \\};
+                \\let outer = fn() {
+                \\    sum(1, 2) + sum(3, 4);
+                \\};
+                \\outer();
+            ,
+            .expected = .{ .int = 10 },
+        },
+        .{
+            .input =
+                \\let globalNum = 10;
+                \\let sum = fn(a, b) {
+                \\    let c = a + b;
+                \\    c + globalNum;
+                \\};
+                \\let outer = fn() {
+                \\    sum(1, 2) + sum(3, 4) + globalNum;
+                \\};
+                \\outer() + globalNum;
+            ,
+            .expected = .{ .int = 50 },
+        },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "calling functions with wrong arguments" {
+    const allocator = testing.allocator;
+
+    const tests = [_][]const u8{
+        \\fn() { 1; }(1);
+        ,
+        \\fn(a) { a; }();
+        ,
+        \\fn(a, b) { a + b; }(1);
+        ,
+    };
+
+    for (tests) |input| {
+        var parser = blk: {
+            var lexer = Lexer.init(input);
+            break :blk Parser.init(allocator, &lexer);
+        };
+        defer parser.deinit();
+        const program = try parser.parse();
+
+        var symbol_table = SymbolTable.init(allocator);
+        defer symbol_table.deinit();
+        var constants = std.ArrayList(Object).empty;
+        defer constants.deinit(allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
+        defer comp.deinit();
+        try comp.enterScope();
+        try comp.compile(program);
+
+        var vm_arena = std.heap.ArenaAllocator.init(allocator);
+        defer vm_arena.deinit();
+        var globals: [vm_mod.globals_size]Object = undefined;
+        var machine = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
+        const result = machine.run();
+
+        try testing.expectError(error.WrongArgumentCount, result);
+    }
+}
