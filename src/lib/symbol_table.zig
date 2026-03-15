@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const SymbolScope = enum {
     global,
+    local,
 };
 
 pub const Symbol = struct {
@@ -23,11 +24,19 @@ pub const SymbolTable = struct {
         };
     }
 
+    pub fn initEnclosed(allocator: std.mem.Allocator, outer: *SymbolTable) SymbolTable {
+        return .{
+            .outer = outer,
+            .store = std.StringHashMap(Symbol).init(allocator),
+            .num_definitions = 0,
+        };
+    }
+
     pub fn define(self: *SymbolTable, name: []const u8) !Symbol {
         const owned_name = try self.store.allocator.dupe(u8, name);
         const symbol = Symbol{
             .name = owned_name,
-            .scope = .global,
+            .scope = if (self.outer == null) .global else .local,
             .index = self.num_definitions,
         };
         try self.store.put(owned_name, symbol);

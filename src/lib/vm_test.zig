@@ -374,6 +374,49 @@ test "calling functions without return value" {
     try runVmTests(&tests);
 }
 
+test "calling functions with bindings" {
+    const tests = [_]VmTestCase{
+        .{
+            .input = "let one = fn() { let one = 1; one }; one();",
+            .expected = .{ .int = 1 },
+        },
+        .{
+            .input =
+                \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+                \\oneAndTwo();
+            ,
+            .expected = .{ .int = 3 },
+        },
+        .{
+            .input =
+                \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+                \\let threeAndFour = fn() { let three = 3; let four = 4; three + four; };
+                \\oneAndTwo() + threeAndFour();
+            ,
+            .expected = .{ .int = 10 },
+        },
+        .{
+            .input =
+                \\let firstFoobar = fn() { let foobar = 50; foobar; };
+                \\let secondFoobar = fn() { let foobar = 100; foobar; };
+                \\firstFoobar() + secondFoobar();
+            ,
+            .expected = .{ .int = 150 },
+        },
+        .{
+            .input =
+                \\let globalSeed = 50;
+                \\let minusOne = fn() { let num = 1; globalSeed - num; };
+                \\let minusTwo = fn() { let num = 2; globalSeed - num; };
+                \\minusOne() + minusTwo();
+            ,
+            .expected = .{ .int = 97 },
+        },
+    };
+
+    try runVmTests(&tests);
+}
+
 test "first class functions" {
     const tests = [_]VmTestCase{
         .{
@@ -382,6 +425,10 @@ test "first class functions" {
                 \\let returnsOneReturner = fn() { returnsOne; };
                 \\returnsOneReturner()();
             ,
+            .expected = .{ .int = 1 },
+        },
+        .{
+            .input = "let returnsOneReturner = fn() { let returnsOne = fn() { 1; }; returnsOne; }; returnsOneReturner()();",
             .expected = .{ .int = 1 },
         },
     };

@@ -52,16 +52,28 @@ pub const Compiler = struct {
     pub fn enterScope(self: *Self) !void {
         try self.scopes.append(self.allocator(), .{});
         self.scope_index = self.scopes.items.len - 1;
+        // Only create an enclosed symbol table for nested scopes (functions),
+        // not for the initial main program scope
+        if (self.scopes.items.len > 1) {
+            const enclosed = try self.allocator().create(SymbolTable);
+            enclosed.* = SymbolTable.initEnclosed(self.allocator(), self.symbol_table);
+            self.symbol_table = enclosed;
+        }
     }
 
-    pub fn leaveScope(self: *Self) ?code.Instructions {
+    pub fn leaveScope(self: *Self) struct { instructions: ?code.Instructions, num_locals: usize } {
         if (self.scope_index == 0) {
-            return null;
+            return .{ .instructions = null, .num_locals = 0 };
+        }
+
+        const num_locals = self.symbol_table.num_definitions;
+        if (self.symbol_table.outer) |outer| {
+            self.symbol_table = outer;
         }
 
         self.scope_index -= 1;
-        const scope = self.scopes.pop() orelse return null;
-        return scope.instructions.items;
+        const scope = self.scopes.pop() orelse return .{ .instructions = null, .num_locals = 0 };
+        return .{ .instructions = scope.instructions.items, .num_locals = num_locals };
     }
 
     fn currentScope(self: *Self) *CompilationScope {
@@ -118,7 +130,8 @@ pub const Compiler = struct {
             .let => |*let_stmt| {
                 try self.compile(&let_stmt.value.expression);
                 const sym = try self.symbol_table.define(let_stmt.name.value);
-                _ = try self.emit(.set_global, &.{sym.index});
+                const op: code.Opcode = if (sym.scope == .global) .set_global else .set_local;
+                _ = try self.emit(op, &.{sym.index});
             },
             .@"return" => |*ret_stmt| {
                 if (ret_stmt.value) |*val| {
@@ -142,7 +155,8 @@ pub const Compiler = struct {
             .if_expression => |*val| self.compileIfExpression(val),
             .identifier => |*ident| {
                 const sym = self.symbol_table.resolve(ident.value) orelse return Error.UndefinedVariable;
-                _ = try self.emit(.get_global, &.{sym.index});
+                const op: code.Opcode = if (sym.scope == .global) .get_global else .get_local;
+                _ = try self.emit(op, &.{sym.index});
             },
             .index_expression => |*idx| {
                 try self.compile(&idx.left.expression);
@@ -272,10 +286,11 @@ pub const Compiler = struct {
             _ = try self.emit(.op_return, &.{});
         }
 
-        const instructions = self.leaveScope() orelse return Error.OperationNotSupported;
+        const result = self.leaveScope();
+        const instructions = result.instructions orelse return Error.OperationNotSupported;
 
         const compiled_fn = try self.allocator().create(Object.CompiledFunction);
-        compiled_fn.* = Object.CompiledFunction.init(instructions);
+        compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals);
         _ = try self.emit(.constant, &.{
             try self.addConstant(.{
                 .compiled_function = compiled_fn,

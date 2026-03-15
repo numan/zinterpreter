@@ -34,7 +34,7 @@ pub const Vm = struct {
 
     pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) !Vm {
         const main_fn = try allocator.create(Object.CompiledFunction);
-        main_fn.* = .{ .instructions = bytecode.instructions };
+        main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0 };
 
         var vm = Vm{
             .constants = bytecode.constants,
@@ -45,7 +45,7 @@ pub const Vm = struct {
             .frames = undefined,
             .frame_index = 1,
         };
-        vm.frames[0] = Frame.init(main_fn);
+        vm.frames[0] = Frame.init(main_fn, 0);
         return vm;
     }
 
@@ -162,6 +162,16 @@ pub const Vm = struct {
                     self.currentFrame().ip += 2;
                     try self.push(self.globals[global_index]);
                 },
+                .set_local => {
+                    const local_index = ins[ip + 1];
+                    self.currentFrame().ip += 1;
+                    self.stack[self.currentFrame().base_pointer + local_index] = try self.pop();
+                },
+                .get_local => {
+                    const local_index = ins[ip + 1];
+                    self.currentFrame().ip += 1;
+                    try self.push(self.stack[self.currentFrame().base_pointer + local_index]);
+                },
                 .pop => {
                     _ = try self.pop();
                 },
@@ -173,20 +183,19 @@ pub const Vm = struct {
                         else => return error.UndefinedError,
                     };
 
-                    const fn_frame = Frame.init(compiled_fn);
+                    const fn_frame = Frame.init(compiled_fn, self.sp);
+                    self.sp = fn_frame.base_pointer + compiled_fn.num_locals;
                     self.pushFrame(fn_frame);
                 },
                 .return_value => {
                     const return_val = try self.pop();
-                    _ = self.popFrame();
-                    // pop the function object from the caller's stack
-                    _ = try self.pop();
+                    const f = self.popFrame();
+                    self.sp = f.base_pointer - 1;
                     try self.push(return_val);
                 },
                 .op_return => {
-                    _ = self.popFrame();
-                    // pop the function object from the caller's stack
-                    _ = try self.pop();
+                    const f = self.popFrame();
+                    self.sp = f.base_pointer - 1;
                     try self.push(Null);
                 },
             }

@@ -28,6 +28,8 @@ pub const Opcode = enum(u8) {
     call,
     return_value,
     op_return,
+    set_local,
+    get_local,
 };
 
 pub const Definition = struct {
@@ -60,6 +62,8 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .call = .{ .name = "OpCall", .operand_widths = &.{1} },
     .return_value = .{ .name = "OpReturnValue", .operand_widths = &.{} },
     .op_return = .{ .name = "OpReturn", .operand_widths = &.{} },
+    .set_local = .{ .name = "OpSetLocal", .operand_widths = &.{1} },
+    .get_local = .{ .name = "OpGetLocal", .operand_widths = &.{1} },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -193,6 +197,8 @@ test "read operands" {
         .{ .op = .call, .operands = &.{255} },
         .{ .op = .return_value, .operands = &.{} },
         .{ .op = .op_return, .operands = &.{} },
+        .{ .op = .set_local, .operands = &.{255} },
+        .{ .op = .get_local, .operands = &.{255} },
     };
 
     for (tests) |tt| {
@@ -237,6 +243,8 @@ test "instructions string" {
         try make(testing.allocator, .call, &.{255}),
         try make(testing.allocator, .return_value, &.{}),
         try make(testing.allocator, .op_return, &.{}),
+        try make(testing.allocator, .set_local, &.{1}),
+        try make(testing.allocator, .get_local, &.{1}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -272,6 +280,8 @@ test "instructions string" {
         \\0041 OpCall 255
         \\0043 OpReturnValue
         \\0044 OpReturn
+        \\0045 OpSetLocal 1
+        \\0047 OpGetLocal 1
         \\
     ;
 
@@ -421,6 +431,16 @@ test "make" {
             .op = .op_return,
             .operands = &.{},
             .expected = &.{@intFromEnum(Opcode.op_return)},
+        },
+        .{
+            .op = .set_local,
+            .operands = &.{255},
+            .expected = &.{ @intFromEnum(Opcode.set_local), 255 },
+        },
+        .{
+            .op = .get_local,
+            .operands = &.{255},
+            .expected = &.{ @intFromEnum(Opcode.get_local), 255 },
         },
     };
 
