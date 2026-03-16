@@ -11,6 +11,7 @@ pub const Object = union(enum) {
     bool: Boolean,
     null: Null,
     err: Error,
+    closure: *Closure,
     compiled_function: *CompiledFunction,
     function: *Function,
     string: *String,
@@ -119,6 +120,24 @@ pub const Object = union(enum) {
         pub fn inspect(self: *const Object.Null, writer: *std.Io.Writer) !void {
             _ = self;
             try writer.writeAll("null");
+            try writer.flush();
+        }
+    };
+
+    pub const Closure = struct {
+        function: *CompiledFunction,
+        free_vars: []const Object,
+
+        pub fn init(function: *CompiledFunction, free_vars: []const Object) Closure {
+            return Closure{
+                .function = function,
+                .free_vars = free_vars,
+            };
+        }
+
+        pub fn inspect(self: *const Object.Closure, writer: *std.Io.Writer) !void {
+            try writer.writeAll("Closure[");
+            try writer.print("0x{x}]", .{@intFromPtr(self)});
             try writer.flush();
         }
     };

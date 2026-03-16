@@ -79,6 +79,7 @@ fn printObject(obj: *const Object, writer: *std.Io.Writer) std.Io.Writer.Error!v
         },
         .function => try writer.writeAll("fn(...) {...}"),
         .compiled_function => try writer.writeAll("CompiledFunction"),
+        .closure => try writer.writeAll("ClosureFunction"),
         .builtin => try writer.writeAll("builtin function"),
         .hash => try writer.writeAll("{...}"),
     }

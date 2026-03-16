@@ -707,8 +707,6 @@ test "function literal expressions" {
     defer allocator.free(op_constant_0);
     const op_constant_1 = try code.make(allocator, .constant, &.{1});
     defer allocator.free(op_constant_1);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
     const op_add = try code.make(allocator, .add, &.{});
     defer allocator.free(op_add);
     const op_return_value = try code.make(allocator, .return_value, &.{});
@@ -717,6 +715,10 @@ test "function literal expressions" {
     defer allocator.free(op_pop);
     const op_return = try code.make(allocator, .op_return, &.{});
     defer allocator.free(op_return);
+    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
+    defer allocator.free(op_closure_2_0);
+    const op_closure_0_0 = try code.make(allocator, .closure, &.{ 0, 0 });
+    defer allocator.free(op_closure_0_0);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -733,7 +735,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_2,
+                op_closure_2_0,
                 op_pop,
             },
         },
@@ -751,7 +753,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_2,
+                op_closure_2_0,
                 op_pop,
             },
         },
@@ -766,7 +768,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_0,
+                op_closure_0_0,
                 op_pop,
             },
         },
@@ -800,8 +802,10 @@ test "let statement scopes" {
     defer allocator.free(op_pop);
     const op_add = try code.make(allocator, .add, &.{});
     defer allocator.free(op_add);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
+    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
+    defer allocator.free(op_closure_1_0);
+    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
+    defer allocator.free(op_closure_2_0);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -818,7 +822,7 @@ test "let statement scopes" {
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
-                op_constant_1,
+                op_closure_1_0,
                 op_pop,
             },
         },
@@ -836,7 +840,7 @@ test "let statement scopes" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_1,
+                op_closure_1_0,
                 op_pop,
             },
         },
@@ -859,7 +863,7 @@ test "let statement scopes" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_2,
+                op_closure_2_0,
                 op_pop,
             },
         },
@@ -901,6 +905,10 @@ test "function calls" {
     defer allocator.free(op_constant_2);
     const op_constant_3 = try code.make(allocator, .constant, &.{3});
     defer allocator.free(op_constant_3);
+    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
+    defer allocator.free(op_closure_1_0);
+    const op_closure_0_0 = try code.make(allocator, .closure, &.{ 0, 0 });
+    defer allocator.free(op_closure_0_0);
 
     const tests = [_]CompilerTestCase{
         .{
@@ -915,7 +923,7 @@ test "function calls" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_1,
+                op_closure_1_0,
                 op_call_0,
                 op_pop,
             },
@@ -935,7 +943,7 @@ test "function calls" {
                 },
             },
             .expected_instructions = &.{
-                op_constant_1,
+                op_closure_1_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_call_0,
@@ -957,7 +965,7 @@ test "function calls" {
                 .{ .int = 24 },
             },
             .expected_instructions = &.{
-                op_constant_0,
+                op_closure_0_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_constant_1,
@@ -986,7 +994,7 @@ test "function calls" {
                 .{ .int = 26 },
             },
             .expected_instructions = &.{
-                op_constant_0,
+                op_closure_0_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_constant_1,

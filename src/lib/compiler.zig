@@ -302,10 +302,11 @@ pub const Compiler = struct {
 
         const compiled_fn = try self.allocator().create(Object.CompiledFunction);
         compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals, fn_lit.parameters.len);
-        _ = try self.emit(.constant, &.{
+        _ = try self.emit(.closure, &.{
             try self.addConstant(.{
                 .compiled_function = compiled_fn,
             }),
+            0,
         });
     }
 

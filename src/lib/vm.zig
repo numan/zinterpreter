@@ -36,8 +36,9 @@ pub const Vm = struct {
     writer: *std.Io.Writer,
 
     pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator, writer: *std.Io.Writer) !Vm {
-        const main_fn = try allocator.create(Object.CompiledFunction);
-        main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
+        const main_closure = try allocator.create(Object.Closure);
+        var main_fn: Object.CompiledFunction = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
+        main_closure.* = Object.Closure.init(&main_fn, &.{});
 
         var vm = Vm{
             .constants = bytecode.constants,
@@ -49,7 +50,8 @@ pub const Vm = struct {
             .frame_index = 1,
             .writer = writer,
         };
-        vm.frames[0] = Frame.init(main_fn, 0);
+
+        vm.frames[0] = Frame.init(main_closure, 0);
         return vm;
     }
 
@@ -185,18 +187,29 @@ pub const Vm = struct {
                     const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
                     try self.push(builtins_mod.getObject(b));
                 },
+                .closure => {
+                    const const_index = code.readUint16(ins[ip + 1 ..]);
+                    self.currentFrame().ip += 2;
+                    _ = ins[ip + 3]; // num_free (always 0 for now)
+                    self.currentFrame().ip += 1;
+
+                    const compiled_fn = self.constants[const_index].compiled_function;
+                    const closure = try self.allocator.create(Object.Closure);
+                    closure.* = Object.Closure.init(compiled_fn, &.{});
+                    try self.push(.{ .closure = closure });
+                },
                 .call => {
                     const num_args = code.readUint8(ins[ip + 1 ..]);
                     self.currentFrame().ip += 1;
 
                     const top_obj = self.stack[self.sp - 1 - num_args];
                     switch (top_obj) {
-                        .compiled_function => |compiled_fn| {
-                            if (num_args != compiled_fn.num_parameters) {
+                        .closure => |closure| {
+                            if (num_args != closure.function.*.num_parameters) {
                                 return error.WrongArgumentCount;
                             }
-                            const fn_frame = Frame.init(compiled_fn, self.sp - num_args);
-                            self.sp = fn_frame.base_pointer + compiled_fn.num_locals;
+                            const fn_frame = Frame.init(closure, self.sp - num_args);
+                            self.sp = fn_frame.base_pointer + closure.function.*.num_locals;
                             self.pushFrame(fn_frame);
                         },
                         .builtin => |builtin| {

@@ -31,6 +31,7 @@ pub const Opcode = enum(u8) {
     set_local,
     get_local,
     get_builtin,
+    closure,
 };
 
 pub const Definition = struct {
@@ -66,6 +67,7 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .set_local = .{ .name = "OpSetLocal", .operand_widths = &.{1} },
     .get_local = .{ .name = "OpGetLocal", .operand_widths = &.{1} },
     .get_builtin = .{ .name = "OpGetBuiltin", .operand_widths = &.{1} },
+    .closure = .{ .name = "OpClosure", .operand_widths = &.{ 2, 1 } },
 });
 
 pub fn lookup(op: Opcode) Definition {
@@ -206,6 +208,7 @@ test "read operands" {
         .{ .op = .set_local, .operands = &.{255} },
         .{ .op = .get_local, .operands = &.{255} },
         .{ .op = .get_builtin, .operands = &.{255} },
+        .{ .op = .closure, .operands = &.{ 65535, 255 } },
     };
 
     for (tests) |tt| {
@@ -253,6 +256,7 @@ test "instructions string" {
         try make(testing.allocator, .set_local, &.{1}),
         try make(testing.allocator, .get_local, &.{1}),
         try make(testing.allocator, .get_builtin, &.{1}),
+        try make(testing.allocator, .closure, &.{ 65535, 255 }),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -291,6 +295,7 @@ test "instructions string" {
         \\0045 OpSetLocal 1
         \\0047 OpGetLocal 1
         \\0049 OpGetBuiltin 1
+        \\0051 OpClosure 65535 255
         \\
     ;
 
@@ -455,6 +460,11 @@ test "make" {
             .op = .get_builtin,
             .operands = &.{255},
             .expected = &.{ @intFromEnum(Opcode.get_builtin), 255 },
+        },
+        .{
+            .op = .closure,
+            .operands = &.{ 65534, 255 },
+            .expected = &.{ @intFromEnum(Opcode.closure), 255, 254, 255 },
         },
     };
 
