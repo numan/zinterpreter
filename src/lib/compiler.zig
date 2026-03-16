@@ -155,7 +155,11 @@ pub const Compiler = struct {
             .if_expression => |*val| self.compileIfExpression(val),
             .identifier => |*ident| {
                 const sym = self.symbol_table.resolve(ident.value) orelse return Error.UndefinedVariable;
-                const op: code.Opcode = if (sym.scope == .global) .get_global else .get_local;
+                const op: code.Opcode = switch (sym.scope) {
+                    .global => .get_global,
+                    .local => .get_local,
+                    .builtin => .get_builtin,
+                };
                 _ = try self.emit(op, &.{sym.index});
             },
             .index_expression => |*idx| {

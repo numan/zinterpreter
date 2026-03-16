@@ -3,6 +3,7 @@ const code = @import("code.zig");
 const compiler = @import("compiler.zig");
 const object = @import("object.zig");
 const frame = @import("frame.zig");
+const builtins_mod = @import("builtins.zig");
 
 const Object = object.Object;
 const Bytecode = compiler.Bytecode;
@@ -22,7 +23,7 @@ const Errors = error{
     HashNotHashable,
     UndefinedError,
     WrongArgumentCount,
-};
+} || std.Io.Writer.Error;
 
 pub const Vm = struct {
     constants: []Object,
@@ -32,8 +33,9 @@ pub const Vm = struct {
     allocator: std.mem.Allocator,
     frames: [max_frames]Frame = undefined,
     frame_index: usize,
+    writer: *std.Io.Writer,
 
-    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator) !Vm {
+    pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator, writer: *std.Io.Writer) !Vm {
         const main_fn = try allocator.create(Object.CompiledFunction);
         main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
 
@@ -45,6 +47,7 @@ pub const Vm = struct {
             .allocator = allocator,
             .frames = undefined,
             .frame_index = 1,
+            .writer = writer,
         };
         vm.frames[0] = Frame.init(main_fn, 0);
         return vm;
@@ -176,23 +179,37 @@ pub const Vm = struct {
                 .pop => {
                     _ = try self.pop();
                 },
+                .get_builtin => {
+                    const builtin_index = ins[ip + 1];
+                    self.currentFrame().ip += 1;
+                    const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
+                    try self.push(builtins_mod.getObject(b));
+                },
                 .call => {
                     const num_args = code.readUint8(ins[ip + 1 ..]);
                     self.currentFrame().ip += 1;
 
                     const top_obj = self.stack[self.sp - 1 - num_args];
-                    const compiled_fn = switch (top_obj) {
-                        .compiled_function => |o| o,
+                    switch (top_obj) {
+                        .compiled_function => |compiled_fn| {
+                            if (num_args != compiled_fn.num_parameters) {
+                                return error.WrongArgumentCount;
+                            }
+                            const fn_frame = Frame.init(compiled_fn, self.sp - num_args);
+                            self.sp = fn_frame.base_pointer + compiled_fn.num_locals;
+                            self.pushFrame(fn_frame);
+                        },
+                        .builtin => |builtin| {
+                            const args = self.stack[self.sp - num_args .. self.sp];
+                            const result = switch (builtin) {
+                                .function => |func| try func(self.allocator, args),
+                                .writer_function => |func| try func(self.allocator, args, self.writer),
+                            };
+                            self.sp = self.sp - num_args - 1;
+                            try self.push(result);
+                        },
                         else => return error.UndefinedError,
-                    };
-
-                    if (num_args != compiled_fn.num_parameters) {
-                        return error.WrongArgumentCount;
                     }
-
-                    const fn_frame = Frame.init(compiled_fn, self.sp - num_args);
-                    self.sp = fn_frame.base_pointer + compiled_fn.num_locals;
-                    self.pushFrame(fn_frame);
                 },
                 .return_value => {
                     const return_val = try self.pop();

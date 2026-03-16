@@ -22,6 +22,7 @@ const Expected = union(enum) {
     string: []const u8,
     int_array: []const i64,
     int_hash: []const HashEntry,
+    err: []const u8,
     null,
 };
 
@@ -76,11 +77,23 @@ fn testStringObject(expected: []const u8, obj: Object) !void {
     try testing.expectEqualStrings(expected, str.value);
 }
 
+fn testErrorObject(expected_msg: []const u8, obj: Object) !void {
+    const err_obj = switch (obj) {
+        .err => |e| e,
+        else => {
+            std.debug.print("object is not Error. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqualStrings(expected_msg, err_obj.msg);
+}
+
 fn testExpectedObject(expected: Expected, obj: Object) !void {
     switch (expected) {
         .int => |val| try testIntegerObject(val, obj),
         .boolean => |val| try testBooleanObject(val, obj),
         .string => |val| try testStringObject(val, obj),
+        .err => |val| try testErrorObject(val, obj),
         .int_array => |expected_elements| {
             const array = switch (obj) {
                 .array => |a| a,
@@ -138,7 +151,9 @@ fn runVmTests(tests: []const VmTestCase) !void {
         var vm_arena = std.heap.ArenaAllocator.init(allocator);
         defer vm_arena.deinit();
         var globals: [vm_mod.globals_size]Object = undefined;
-        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
+        var test_writer = std.Io.Writer.Allocating.init(allocator);
+        defer test_writer.deinit();
+        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), &test_writer.writer);
         try vm.run();
 
         const stack_elem = vm.lastPoppedStackElem() orelse {
@@ -536,9 +551,36 @@ test "calling functions with wrong arguments" {
         var vm_arena = std.heap.ArenaAllocator.init(allocator);
         defer vm_arena.deinit();
         var globals: [vm_mod.globals_size]Object = undefined;
-        var machine = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator());
+        var test_writer = std.Io.Writer.Allocating.init(allocator);
+        defer test_writer.deinit();
+        var machine = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), &test_writer.writer);
         const result = machine.run();
 
         try testing.expectError(error.WrongArgumentCount, result);
     }
+}
+
+test "builtin functions" {
+    const tests = [_]VmTestCase{
+        .{ .input = "len(\"\")", .expected = .{ .int = 0 } },
+        .{ .input = "len(\"four\")", .expected = .{ .int = 4 } },
+        .{ .input = "len(\"hello world\")", .expected = .{ .int = 11 } },
+        .{ .input = "len(1)", .expected = .{ .err = "argument to `len` not supported, got int" } },
+        .{ .input = "len(\"one\", \"two\")", .expected = .{ .err = "wrong number of arguments. got=2, want=1" } },
+        .{ .input = "len([1, 2, 3])", .expected = .{ .int = 3 } },
+        .{ .input = "len([])", .expected = .{ .int = 0 } },
+        .{ .input = "puts(\"hello\", \"world!\")", .expected = .null },
+        .{ .input = "first([1, 2, 3])", .expected = .{ .int = 1 } },
+        .{ .input = "first([])", .expected = .null },
+        .{ .input = "first(1)", .expected = .{ .err = "argument to `first` must be ARRAY, got int" } },
+        .{ .input = "last([1, 2, 3])", .expected = .{ .int = 3 } },
+        .{ .input = "last([])", .expected = .null },
+        .{ .input = "last(1)", .expected = .{ .err = "argument to `last` must be ARRAY, got int" } },
+        .{ .input = "rest([1, 2, 3])", .expected = .{ .int_array = &.{ 2, 3 } } },
+        .{ .input = "rest([])", .expected = .null },
+        .{ .input = "push([], 1)", .expected = .{ .int_array = &.{1} } },
+        .{ .input = "push(1, 1)", .expected = .{ .err = "argument to `push` must be ARRAY, got int" } },
+    };
+
+    try runVmTests(&tests);
 }

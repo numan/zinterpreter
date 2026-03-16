@@ -20,8 +20,8 @@ pub const EvalState = struct {
         self.gc.deinit();
     }
 
-    pub fn newEvaluator(self: *EvalState) Evaluator {
-        return Evaluator.init(self.environment, &self.gc);
+    pub fn newEvaluator(self: *EvalState, writer: *std.Io.Writer) Evaluator {
+        return Evaluator.init(self.environment, &self.gc, writer);
     }
 
     pub fn collect(self: *EvalState) void {

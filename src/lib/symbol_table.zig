@@ -1,8 +1,10 @@
 const std = @import("std");
+const builtins = @import("builtins.zig");
 
 pub const SymbolScope = enum {
     global,
     local,
+    builtin,
 };
 
 pub const Symbol = struct {
@@ -50,6 +52,13 @@ pub const SymbolTable = struct {
         }
         if (self.outer) |outer| {
             return outer.resolve(name);
+        }
+        if (builtins.fromName(name)) |b| {
+            return Symbol{
+                .name = name,
+                .scope = .builtin,
+                .index = @intFromEnum(b),
+            };
         }
         return null;
     }

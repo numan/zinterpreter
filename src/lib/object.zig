@@ -1,9 +1,10 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const environment = @import("environment.zig");
-const evaluator_mod = @import("evaluator.zig");
 
-pub const BuiltinFnType = *const fn (*evaluator_mod.Evaluator, []const Object) std.mem.Allocator.Error!Object;
+pub const BuiltinFnType = *const fn (std.mem.Allocator, []const Object) std.mem.Allocator.Error!Object;
+pub const BuiltinWriterFnType = *const fn (std.mem.Allocator, []const Object, *std.Io.Writer) BuiltinError!Object;
+pub const BuiltinError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub const Object = union(enum) {
     int: Integer,
@@ -24,12 +25,9 @@ pub const Object = union(enum) {
         value: u64,
     };
 
-    pub const Builtin = struct {
+    pub const Builtin = union(enum) {
         function: BuiltinFnType,
-
-        pub fn init(func: BuiltinFnType) Builtin {
-            return .{ .function = func };
-        }
+        writer_function: BuiltinWriterFnType,
 
         pub fn inspect(self: *const Builtin, writer: *std.Io.Writer) !void {
             _ = self;

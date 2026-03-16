@@ -4,6 +4,7 @@ const ast = @import("ast.zig");
 const object = @import("object.zig");
 const environment = @import("environment.zig");
 const gc = @import("gc.zig");
+const builtins_mod = @import("builtins.zig");
 
 const ExpressionType = ast.ExpressionType;
 const Program = ast.Program;
@@ -13,31 +14,14 @@ const Object = object.Object;
 const Environment = environment.Environment;
 const Gc = gc.Gc;
 
-const BuiltinMapType = std.StaticStringMap(Object);
-const builtins = BuiltinMapType.initComptime(.{
-    .{
-        "len", Object{ .builtin = Object.Builtin.init(&len) },
-    },
-});
-
-fn len(self: *Evaluator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 1) {
-        return try self.errorObj("wrong number of arguments. got={d}, want=1", .{args.len});
-    }
-    return switch (args[0]) {
-        .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
-        .array => |a| .{ .int = Object.Integer.init(@intCast(a.elements.len)) },
-        else => return try self.errorObj("argument to `len` not supported, got {s}", .{args[0].typeName()}),
-    };
-}
-
 pub const Evaluator = struct {
     environment: *Environment,
     gc: *Gc,
+    writer: *std.Io.Writer,
     last_error: ?Object.Error = null,
 
     const Self = @This();
-    const EvalError = error{OutOfMemory};
+    const EvalError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
     const TRUE: Object = .{ .bool = Object.Boolean.init(true) };
     const FALSE: Object = .{ .bool = Object.Boolean.init(false) };
@@ -51,10 +35,11 @@ pub const Evaluator = struct {
 
     const EvalResultTag = std.meta.Tag(EvalResult);
 
-    pub fn init(env: *Environment, collector: *Gc) Self {
+    pub fn init(env: *Environment, collector: *Gc, writer: *std.Io.Writer) Self {
         return .{
             .environment = env,
             .gc = collector,
+            .writer = writer,
             .last_error = null,
         };
     }
@@ -379,7 +364,19 @@ pub const Evaluator = struct {
                 return unwrapEvalResult(evaluated);
             },
             .builtin => |builtin| {
-                return try builtin.function(self, args);
+                const result = switch (builtin) {
+                    .function => |f| try f(self.gc.allocator, args),
+                    .writer_function => |f| try f(self.gc.allocator, args, self.writer),
+                };
+                switch (result) {
+                    .array => |arr| try self.gc.arrays.append(self.gc.allocator, arr),
+                    .err => |err| {
+                        self.freeLastError();
+                        self.last_error = err;
+                    },
+                    else => {},
+                }
+                return result;
             },
             else => try self.errorObj("not a function: {s}", .{func.typeName()}),
         };
@@ -391,7 +388,7 @@ pub const Evaluator = struct {
             return v;
         }
 
-        value = builtins.get(expression.token.ch);
+        value = builtins_mod.getBuiltinByName(expression.token.ch);
         if (value) |v| {
             return v;
         }

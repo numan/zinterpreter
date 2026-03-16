@@ -12,6 +12,7 @@ comptime {
     _ = @import("lib/parsing_utils.zig");
     _ = @import("lib/parser.zig");
     _ = @import("lib/object.zig");
+    _ = @import("lib/builtins.zig");
     _ = @import("lib/evaluator.zig");
     _ = @import("lib/gc.zig");
     _ = @import("lib/code.zig");

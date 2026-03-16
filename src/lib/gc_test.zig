@@ -115,7 +115,9 @@ test "gc integration collects transient call frame" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(global, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(global, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     _ = try evalWithGc(
@@ -141,7 +143,9 @@ test "gc integration keeps escaping closure then reclaims it" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(global, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(global, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     _ = try evalWithGc(
@@ -331,7 +335,9 @@ test "rc integration overwrite frees after collect" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(global, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(global, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     _ = try evalWithGc("let x = \"hello\";", arena.allocator(), &evaluator);
@@ -351,7 +357,9 @@ test "rc reassignment releases old value" {
     defer collector.deinit();
 
     const global = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(global, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(global, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     // x holds "foo", y copies the reference

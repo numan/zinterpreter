@@ -158,7 +158,9 @@ test "eval integer expression" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -263,7 +265,9 @@ test "eval boolean" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -310,7 +314,9 @@ test "bang operator" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -361,7 +367,9 @@ test "if else expressions" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -404,7 +412,9 @@ test "return statements" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -427,7 +437,9 @@ test "bare return statements" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -506,7 +518,9 @@ test "error handling" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -539,7 +553,9 @@ test "let statements" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -557,7 +573,9 @@ test "function object" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -608,7 +626,9 @@ test "function application" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -639,7 +659,9 @@ test "closures" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -679,7 +701,9 @@ test "function as argument" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -703,7 +727,9 @@ test "string literal" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -736,7 +762,9 @@ test "variable reassignment" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -760,7 +788,9 @@ test "reassignment of undeclared variable" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -786,7 +816,9 @@ test "string concatenation" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -819,7 +851,9 @@ test "string equality" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -846,7 +880,9 @@ test "string concatenation gc" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -874,7 +910,9 @@ test "chained string concatenation gc" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     _ = try testEval(input, arena.allocator(), &evaluator);
@@ -897,7 +935,9 @@ test "concat of variables gc frees originals when unreferenced" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     // a="foo", b="bar", c=a+b="foobar", then overwrite a and b with ints
@@ -925,7 +965,9 @@ test "multiple concat results some collected some retained" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     // a = "xy" (from "x"+"y"), b = "12" (from "1"+"2"), then overwrite a
@@ -959,7 +1001,9 @@ test "reassignment with string gc" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -995,7 +1039,9 @@ test "builtin len function" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -1032,7 +1078,9 @@ test "builtin len errors" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -1054,7 +1102,9 @@ test "error survives gc collect" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     // Eval an undefined identifier — produces one error
@@ -1075,7 +1125,9 @@ test "evaluator deinit frees error" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
 
     // Produce an error
     _ = try testEval("foobar", arena.allocator(), &evaluator);
@@ -1094,7 +1146,9 @@ test "new eval replaces previous error" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     // First error
@@ -1118,7 +1172,9 @@ test "eval array literals" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -1162,7 +1218,9 @@ test "eval index expressions" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -1190,7 +1248,9 @@ test "eval empty array" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -1223,7 +1283,9 @@ test "builtin len on arrays" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -1246,7 +1308,9 @@ test "eval hash literal" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -1290,7 +1354,9 @@ test "eval empty hash literal" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -1333,7 +1399,9 @@ test "eval hash index expressions" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
@@ -1364,7 +1432,9 @@ test "unusable hash key error" {
     defer collector.deinit();
 
     const env = try collector.allocEnvironment(null);
-    var evaluator = Evaluator.init(env, &collector);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
     defer evaluator.deinit();
 
     const evaluated = try testEval(input, arena.allocator(), &evaluator);
@@ -1388,7 +1458,191 @@ test "index expression errors" {
         defer collector.deinit();
 
         const env = try collector.allocEnvironment(null);
-        var evaluator = Evaluator.init(env, &collector);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
+            std.debug.print("Got wrong error for input: {s}\n", .{case.input});
+            return err;
+        };
+    }
+}
+
+test "builtin first" {
+    const TestExpected = union(enum) { int: i64, null_val: void };
+    const tests = [_]struct {
+        input: []const u8,
+        expected: TestExpected,
+    }{
+        .{ .input = "first([1, 2, 3])", .expected = .{ .int = 1 } },
+        .{ .input = "first([])", .expected = .{ .null_val = {} } },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        switch (case.expected) {
+            .int => |expected| try testIntegerObjectEqual(evaluated, expected),
+            .null_val => try testNullObject(evaluated),
+        }
+    }
+}
+
+test "builtin last" {
+    const TestExpected = union(enum) { int: i64, null_val: void };
+    const tests = [_]struct {
+        input: []const u8,
+        expected: TestExpected,
+    }{
+        .{ .input = "last([1, 2, 3])", .expected = .{ .int = 3 } },
+        .{ .input = "last([])", .expected = .{ .null_val = {} } },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        switch (case.expected) {
+            .int => |expected| try testIntegerObjectEqual(evaluated, expected),
+            .null_val => try testNullObject(evaluated),
+        }
+    }
+}
+
+test "builtin rest" {
+    {
+        // rest([1, 2, 3]) -> [2, 3]
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval("rest([1, 2, 3])", arena.allocator(), &evaluator);
+        const array = switch (evaluated) {
+            .array => |a| a,
+            else => return error.TestUnexpectedResult,
+        };
+        try testing.expectEqual(@as(usize, 2), array.elements.len);
+        try testIntegerObjectEqual(array.elements[0], 2);
+        try testIntegerObjectEqual(array.elements[1], 3);
+    }
+    {
+        // rest([]) -> null
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval("rest([])", arena.allocator(), &evaluator);
+        try testNullObject(evaluated);
+    }
+}
+
+test "builtin push" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval("push([1, 2], 3)", arena.allocator(), &evaluator);
+    const array = switch (evaluated) {
+        .array => |a| a,
+        else => return error.TestUnexpectedResult,
+    };
+    try testing.expectEqual(@as(usize, 3), array.elements.len);
+    try testIntegerObjectEqual(array.elements[0], 1);
+    try testIntegerObjectEqual(array.elements[1], 2);
+    try testIntegerObjectEqual(array.elements[2], 3);
+}
+
+test "builtin puts returns null" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+    defer evaluator.deinit();
+
+    const evaluated = try testEval("puts(\"hello\")", arena.allocator(), &evaluator);
+    try testNullObject(evaluated);
+}
+
+test "builtin error cases" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected_message: []const u8,
+    }{
+        .{ .input = "first(1)", .expected_message = "argument to `first` must be ARRAY, got int" },
+        .{ .input = "last(1)", .expected_message = "argument to `last` must be ARRAY, got int" },
+        .{ .input = "rest(1)", .expected_message = "argument to `rest` must be ARRAY, got int" },
+        .{ .input = "push(1, 2)", .expected_message = "argument to `push` must be ARRAY, got int" },
+        .{ .input = "first(1, 2)", .expected_message = "wrong number of arguments. got=2, want=1" },
+        .{ .input = "last(1, 2)", .expected_message = "wrong number of arguments. got=2, want=1" },
+        .{ .input = "rest(1, 2)", .expected_message = "wrong number of arguments. got=2, want=1" },
+        .{ .input = "push(1)", .expected_message = "wrong number of arguments. got=1, want=2" },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
         defer evaluator.deinit();
 
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);

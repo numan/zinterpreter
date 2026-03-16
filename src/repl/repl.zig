@@ -30,7 +30,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var state = try EvalState.init(allocator);
     defer state.deinit();
 
-    var evaluator = state.newEvaluator();
+    var evaluator = state.newEvaluator(stdout);
     defer evaluator.deinit();
 
     try stdout.print("{s} ", .{PROMPT});
