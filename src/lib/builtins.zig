@@ -40,104 +40,75 @@ fn newError(allocator: std.mem.Allocator, comptime format: []const u8, args: any
     return .{ .err = Object.Error.init(msg) };
 }
 
-fn builtinLen(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 1) {
-        return try newError(allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
+fn expectArgCount(allocator: std.mem.Allocator, args: []const Object, expected: usize) !?Object {
+    if (args.len != expected) {
+        return try newError(allocator, "wrong number of arguments. got={d}, want={d}", .{ args.len, expected });
     }
+    return null;
+}
+
+const ArrayArgResult = union(enum) { array: *Object.Array, err: Object };
+
+fn expectSingleArrayArg(allocator: std.mem.Allocator, comptime name: []const u8, args: []const Object) !ArrayArgResult {
+    if (args.len != 1) {
+        return .{ .err = try newError(allocator, "wrong number of arguments. got={d}, want=1", .{args.len}) };
+    }
+    return switch (args[0]) {
+        .array => |arr| .{ .array = arr },
+        else => .{ .err = try newError(allocator, "argument to `" ++ name ++ "` must be ARRAY, got {s}", .{args[0].typeName()}) },
+    };
+}
+
+fn builtinLen(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
+    if (try expectArgCount(allocator, args, 1)) |err| return err;
     return switch (args[0]) {
         .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
         .array => |a| .{ .int = Object.Integer.init(@intCast(a.elements.len)) },
-        else => return try newError(allocator, "argument to `len` not supported, got {s}", .{args[0].typeName()}),
+        else => try newError(allocator, "argument to `len` not supported, got {s}", .{args[0].typeName()}),
     };
 }
 
 fn builtinPuts(_: std.mem.Allocator, args: []const Object, writer: *std.Io.Writer) BuiltinError!Object {
     for (args) |*arg| {
-        try printObject(arg, writer);
+        try arg.inspect(writer);
         try writer.writeAll("\n");
     }
     return .{ .null = Object.Null.init() };
 }
 
-fn printObject(obj: *const Object, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    switch (obj.*) {
-        .int => |i| try writer.print("{d}", .{i.value}),
-        .bool => |b| try writer.print("{}", .{b.value}),
-        .null => try writer.writeAll("null"),
-        .string => |s| try writer.writeAll(s.value),
-        .err => |e| {
-            try writer.writeAll("ERROR: ");
-            try writer.writeAll(e.msg);
-        },
-        .array => |a| {
-            try writer.writeAll("[");
-            for (a.elements, 0..) |*elem, i| {
-                try printObject(elem, writer);
-                if (i < a.elements.len - 1) try writer.writeAll(", ");
-            }
-            try writer.writeAll("]");
-        },
-        .function => try writer.writeAll("fn(...) {...}"),
-        .compiled_function => try writer.writeAll("CompiledFunction"),
-        .closure => try writer.writeAll("ClosureFunction"),
-        .builtin => try writer.writeAll("builtin function"),
-        .hash => try writer.writeAll("{...}"),
-    }
-}
-
 fn builtinFirst(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 1) {
-        return try newError(allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
-    }
-    return switch (args[0]) {
-        .array => |arr| {
-            if (arr.elements.len > 0) {
-                return arr.elements[0];
-            }
-            return .{ .null = Object.Null.init() };
-        },
-        else => try newError(allocator, "argument to `first` must be ARRAY, got {s}", .{args[0].typeName()}),
+    const arr = switch (try expectSingleArrayArg(allocator, "first", args)) {
+        .array => |a| a,
+        .err => |e| return e,
     };
+    if (arr.elements.len > 0) return arr.elements[0];
+    return .{ .null = Object.Null.init() };
 }
 
 fn builtinLast(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 1) {
-        return try newError(allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
-    }
-    return switch (args[0]) {
-        .array => |arr| {
-            if (arr.elements.len > 0) {
-                return arr.elements[arr.elements.len - 1];
-            }
-            return .{ .null = Object.Null.init() };
-        },
-        else => try newError(allocator, "argument to `last` must be ARRAY, got {s}", .{args[0].typeName()}),
+    const arr = switch (try expectSingleArrayArg(allocator, "last", args)) {
+        .array => |a| a,
+        .err => |e| return e,
     };
+    if (arr.elements.len > 0) return arr.elements[arr.elements.len - 1];
+    return .{ .null = Object.Null.init() };
 }
 
 fn builtinRest(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 1) {
-        return try newError(allocator, "wrong number of arguments. got={d}, want=1", .{args.len});
-    }
-    return switch (args[0]) {
-        .array => |arr| {
-            if (arr.elements.len == 0) {
-                return .{ .null = Object.Null.init() };
-            }
-            const new_elements = try allocator.alloc(Object, arr.elements.len - 1);
-            @memcpy(new_elements, arr.elements[1..]);
-            const array_ptr = try allocator.create(Object.Array);
-            array_ptr.* = Object.Array.init(new_elements);
-            return .{ .array = array_ptr };
-        },
-        else => try newError(allocator, "argument to `rest` must be ARRAY, got {s}", .{args[0].typeName()}),
+    const arr = switch (try expectSingleArrayArg(allocator, "rest", args)) {
+        .array => |a| a,
+        .err => |e| return e,
     };
+    if (arr.elements.len == 0) return .{ .null = Object.Null.init() };
+    const new_elements = try allocator.alloc(Object, arr.elements.len - 1);
+    @memcpy(new_elements, arr.elements[1..]);
+    const array_ptr = try allocator.create(Object.Array);
+    array_ptr.* = Object.Array.init(new_elements);
+    return .{ .array = array_ptr };
 }
 
 fn builtinPush(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
-    if (args.len != 2) {
-        return try newError(allocator, "wrong number of arguments. got={d}, want=2", .{args.len});
-    }
+    if (try expectArgCount(allocator, args, 2)) |err| return err;
     return switch (args[0]) {
         .array => |arr| {
             const new_elements = try allocator.alloc(Object, arr.elements.len + 1);

@@ -16,7 +16,7 @@ test "define" {
         .{ .name = "b", .scope = .global, .index = 1 },
     };
 
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
 
     const a = try global.define("a");
@@ -25,7 +25,7 @@ test "define" {
     const b = try global.define("b");
     try expectSymbolEqual(expected_global[1], b);
 
-    var local = SymbolTable.initEnclosed(testing.allocator, &global);
+    var local = SymbolTable.init(testing.allocator,&global);
     defer local.deinit();
 
     const c = try local.define("c");
@@ -36,7 +36,7 @@ test "define" {
 }
 
 test "resolve global" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
 
     _ = try global.define("a");
@@ -57,12 +57,12 @@ test "resolve global" {
 }
 
 test "resolve local" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.define("a");
     _ = try global.define("b");
 
-    var local = SymbolTable.initEnclosed(testing.allocator, &global);
+    var local = SymbolTable.init(testing.allocator,&global);
     defer local.deinit();
     _ = try local.define("c");
     _ = try local.define("d");
@@ -84,17 +84,17 @@ test "resolve local" {
 }
 
 test "resolve nested local" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.define("a");
     _ = try global.define("b");
 
-    var first_local = SymbolTable.initEnclosed(testing.allocator, &global);
+    var first_local = SymbolTable.init(testing.allocator,&global);
     defer first_local.deinit();
     _ = try first_local.define("c");
     _ = try first_local.define("d");
 
-    var second_local = SymbolTable.initEnclosed(testing.allocator, &first_local);
+    var second_local = SymbolTable.init(testing.allocator,&first_local);
     defer second_local.deinit();
     _ = try second_local.define("e");
     _ = try second_local.define("f");
@@ -131,17 +131,17 @@ test "resolve nested local" {
 }
 
 test "resolve free" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.define("a");
     _ = try global.define("b");
 
-    var first_local = SymbolTable.initEnclosed(testing.allocator, &global);
+    var first_local = SymbolTable.init(testing.allocator,&global);
     defer first_local.deinit();
     _ = try first_local.define("c");
     _ = try first_local.define("d");
 
-    var second_local = SymbolTable.initEnclosed(testing.allocator, &first_local);
+    var second_local = SymbolTable.init(testing.allocator,&first_local);
     defer second_local.deinit();
     _ = try second_local.define("e");
     _ = try second_local.define("f");
@@ -196,15 +196,15 @@ test "resolve free" {
 }
 
 test "resolve unresolvable free" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.define("a");
 
-    var first_local = SymbolTable.initEnclosed(testing.allocator, &global);
+    var first_local = SymbolTable.init(testing.allocator,&global);
     defer first_local.deinit();
     _ = try first_local.define("c");
 
-    var second_local = SymbolTable.initEnclosed(testing.allocator, &first_local);
+    var second_local = SymbolTable.init(testing.allocator,&first_local);
     defer second_local.deinit();
     _ = try second_local.define("e");
     _ = try second_local.define("f");
@@ -236,7 +236,7 @@ test "resolve unresolvable free" {
 }
 
 test "resolve unknown" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
 
     const result = global.resolve("x");
@@ -244,7 +244,7 @@ test "resolve unknown" {
 }
 
 test "define and resolve function name" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.defineFunctionName("a");
 
@@ -257,7 +257,7 @@ test "define and resolve function name" {
 }
 
 test "shadowing function name" {
-    var global = SymbolTable.init(testing.allocator);
+    var global = SymbolTable.init(testing.allocator, null);
     defer global.deinit();
     _ = try global.defineFunctionName("a");
     _ = try global.define("a");

@@ -18,7 +18,7 @@ pub const VmState = struct {
         return .{
             .allocator = allocator,
             .vm_arena = std.heap.ArenaAllocator.init(allocator),
-            .symbol_table = SymbolTable.init(allocator),
+            .symbol_table = SymbolTable.init(allocator, null),
             .constants = .empty,
             .globals = undefined,
         };
@@ -31,7 +31,7 @@ pub const VmState = struct {
     }
 
     pub fn newCompiler(self: *VmState) !Compiler {
-        var comp = Compiler.init(self.allocator, &self.symbol_table, &self.constants, self.allocator);
+        var comp = Compiler.init(self.allocator, &self.symbol_table, &self.constants);
         try comp.enterScope();
         return comp;
     }

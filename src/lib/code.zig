@@ -152,17 +152,7 @@ pub fn readOperands(def: Definition, ins: Instructions) ReadOperandsResult {
 }
 
 pub fn concatInstructions(allocator: std.mem.Allocator, slices: []const []const u8) ![]u8 {
-    var total_len: usize = 0;
-    for (slices) |ins| {
-        total_len += ins.len;
-    }
-    var buf = try allocator.alloc(u8, total_len);
-    var offset: usize = 0;
-    for (slices) |ins| {
-        @memcpy(buf[offset..][0..ins.len], ins);
-        offset += ins.len;
-    }
-    return buf;
+    return std.mem.concat(allocator, u8, slices);
 }
 
 pub fn toString(instructions: Instructions, writer: *std.Io.Writer) std.Io.Writer.Error!void {

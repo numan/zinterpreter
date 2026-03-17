@@ -139,11 +139,11 @@ fn runVmTests(tests: []const VmTestCase) !void {
         defer parser.deinit();
         const program = try parser.parse();
 
-        var symbol_table = SymbolTable.init(allocator);
+        var symbol_table = SymbolTable.init(allocator, null);
         defer symbol_table.deinit();
         var constants = std.ArrayList(Object).empty;
         defer constants.deinit(allocator);
-        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants);
         defer comp.deinit();
         try comp.enterScope();
         try comp.compile(program);
@@ -519,31 +519,27 @@ test "calling functions with arguments and bindings" {
     try runVmTests(&tests);
 }
 
-test "calling functions with wrong arguments" {
+const VmErrorTestCase = struct {
+    input: []const u8,
+    expected_error: anyerror,
+};
+
+fn runVmErrorTests(tests: []const VmErrorTestCase) !void {
     const allocator = testing.allocator;
 
-    const tests = [_][]const u8{
-        \\fn() { 1; }(1);
-        ,
-        \\fn(a) { a; }();
-        ,
-        \\fn(a, b) { a + b; }(1);
-        ,
-    };
-
-    for (tests) |input| {
+    for (tests) |tt| {
         var parser = blk: {
-            var lexer = Lexer.init(input);
+            var lexer = Lexer.init(tt.input);
             break :blk Parser.init(allocator, &lexer);
         };
         defer parser.deinit();
         const program = try parser.parse();
 
-        var symbol_table = SymbolTable.init(allocator);
+        var symbol_table = SymbolTable.init(allocator, null);
         defer symbol_table.deinit();
         var constants = std.ArrayList(Object).empty;
         defer constants.deinit(allocator);
-        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants);
         defer comp.deinit();
         try comp.enterScope();
         try comp.compile(program);
@@ -553,11 +549,18 @@ test "calling functions with wrong arguments" {
         var globals: [vm_mod.globals_size]Object = undefined;
         var test_writer = std.Io.Writer.Allocating.init(allocator);
         defer test_writer.deinit();
-        var machine = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), &test_writer.writer);
-        const result = machine.run();
-
-        try testing.expectError(error.WrongArgumentCount, result);
+        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), &test_writer.writer);
+        try testing.expectError(tt.expected_error, vm.run());
     }
+}
+
+test "calling functions with wrong arguments" {
+    const tests = [_]VmErrorTestCase{
+        .{ .input = "fn() { 1; }(1);", .expected_error = error.WrongArgumentCount },
+        .{ .input = "fn(a) { a; }();", .expected_error = error.WrongArgumentCount },
+        .{ .input = "fn(a, b) { a + b; }(1);", .expected_error = error.WrongArgumentCount },
+    };
+    try runVmErrorTests(&tests);
 }
 
 test "builtin functions" {

@@ -23,6 +23,10 @@ const CompilerTestCase = struct {
     expected_instructions: []const []const u8,
 };
 
+fn makeOp(alloc: std.mem.Allocator, op: code.Opcode, operands: []const usize) []u8 {
+    return code.make(alloc, op, operands) catch @panic("OOM in test");
+}
+
 fn testInstructions(allocator: std.mem.Allocator, expected: []const []const u8, actual: code.Instructions) !void {
     const concatted = try code.concatInstructions(allocator, expected);
     defer allocator.free(concatted);
@@ -93,11 +97,11 @@ fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCas
         defer parser.deinit();
         const program = try parser.parse();
 
-        var symbol_table = SymbolTable.init(allocator);
+        var symbol_table = SymbolTable.init(allocator, null);
         defer symbol_table.deinit();
         var constants = std.ArrayList(Object).empty;
         defer constants.deinit(allocator);
-        var comp = Compiler.init(allocator, &symbol_table, &constants, allocator);
+        var comp = Compiler.init(allocator, &symbol_table, &constants);
         defer comp.deinit();
         try comp.enterScope();
         try comp.compile(program);
@@ -111,21 +115,17 @@ fn runCompilerTests(allocator: std.mem.Allocator, tests: []const CompilerTestCas
 
 test "integer arithmetic" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_sub = try code.make(allocator, .sub, &.{});
-    defer allocator.free(op_sub);
-    const op_mul = try code.make(allocator, .mul, &.{});
-    defer allocator.free(op_mul);
-    const op_div = try code.make(allocator, .div, &.{});
-    defer allocator.free(op_div);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_add = makeOp(a, .add, &.{});
+    const op_sub = makeOp(a, .sub, &.{});
+    const op_mul = makeOp(a, .mul, &.{});
+    const op_div = makeOp(a, .div, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -185,23 +185,18 @@ test "integer arithmetic" {
 
 test "boolean expressions" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_true = try code.make(allocator, .op_true, &.{});
-    defer allocator.free(op_true);
-    const op_false = try code.make(allocator, .op_false, &.{});
-    defer allocator.free(op_false);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_equal = try code.make(allocator, .equal, &.{});
-    defer allocator.free(op_equal);
-    const op_not_equal = try code.make(allocator, .not_equal, &.{});
-    defer allocator.free(op_not_equal);
-    const op_greater_than = try code.make(allocator, .greater_than, &.{});
-    defer allocator.free(op_greater_than);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_true = makeOp(a, .op_true, &.{});
+    const op_false = makeOp(a, .op_false, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_equal = makeOp(a, .equal, &.{});
+    const op_not_equal = makeOp(a, .not_equal, &.{});
+    const op_greater_than = makeOp(a, .greater_than, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -297,19 +292,16 @@ test "boolean expressions" {
 
 test "prefix expressions" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_true = try code.make(allocator, .op_true, &.{});
-    defer allocator.free(op_true);
-    const op_false = try code.make(allocator, .op_false, &.{});
-    defer allocator.free(op_false);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_minus = try code.make(allocator, .minus, &.{});
-    defer allocator.free(op_minus);
-    const op_bang = try code.make(allocator, .bang, &.{});
-    defer allocator.free(op_bang);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_true = makeOp(a, .op_true, &.{});
+    const op_false = makeOp(a, .op_false, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_minus = makeOp(a, .minus, &.{});
+    const op_bang = makeOp(a, .bang, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -346,25 +338,19 @@ test "prefix expressions" {
 
 test "conditionals" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_true = try code.make(allocator, .op_true, &.{});
-    defer allocator.free(op_true);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_null = try code.make(allocator, .op_null, &.{});
-    defer allocator.free(op_null);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_jump_not_truthy_10 = try code.make(allocator, .jump_not_truthy, &.{10});
-    defer allocator.free(op_jump_not_truthy_10);
-    const op_jump_11 = try code.make(allocator, .jump, &.{11});
-    defer allocator.free(op_jump_11);
-    const op_jump_13 = try code.make(allocator, .jump, &.{13});
-    defer allocator.free(op_jump_13);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_true = makeOp(a, .op_true, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_null = makeOp(a, .op_null, &.{});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_jump_not_truthy_10 = makeOp(a, .jump_not_truthy, &.{10});
+    const op_jump_11 = makeOp(a, .jump, &.{11});
+    const op_jump_13 = makeOp(a, .jump, &.{13});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -402,21 +388,17 @@ test "conditionals" {
 
 test "let statements" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
-    defer allocator.free(op_set_global_0);
-    const op_set_global_1 = try code.make(allocator, .set_global, &.{1});
-    defer allocator.free(op_set_global_1);
-    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
-    defer allocator.free(op_get_global_0);
-    const op_get_global_1 = try code.make(allocator, .get_global, &.{1});
-    defer allocator.free(op_get_global_1);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_set_global_0 = makeOp(a, .set_global, &.{0});
+    const op_set_global_1 = makeOp(a, .set_global, &.{1});
+    const op_get_global_0 = makeOp(a, .get_global, &.{0});
+    const op_get_global_1 = makeOp(a, .get_global, &.{1});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -458,15 +440,14 @@ test "let statements" {
 
 test "string expressions" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_add = makeOp(a, .add, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -494,31 +475,22 @@ test "string expressions" {
 
 test "hash literals" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_constant_3 = try code.make(allocator, .constant, &.{3});
-    defer allocator.free(op_constant_3);
-    const op_constant_4 = try code.make(allocator, .constant, &.{4});
-    defer allocator.free(op_constant_4);
-    const op_constant_5 = try code.make(allocator, .constant, &.{5});
-    defer allocator.free(op_constant_5);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_mul = try code.make(allocator, .mul, &.{});
-    defer allocator.free(op_mul);
-    const op_hash_0 = try code.make(allocator, .hash, &.{0});
-    defer allocator.free(op_hash_0);
-    const op_hash_6 = try code.make(allocator, .hash, &.{6});
-    defer allocator.free(op_hash_6);
-    const op_hash_4 = try code.make(allocator, .hash, &.{4});
-    defer allocator.free(op_hash_4);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_constant_3 = makeOp(a, .constant, &.{3});
+    const op_constant_4 = makeOp(a, .constant, &.{4});
+    const op_constant_5 = makeOp(a, .constant, &.{5});
+    const op_add = makeOp(a, .add, &.{});
+    const op_mul = makeOp(a, .mul, &.{});
+    const op_hash_0 = makeOp(a, .hash, &.{0});
+    const op_hash_6 = makeOp(a, .hash, &.{6});
+    const op_hash_4 = makeOp(a, .hash, &.{4});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         // {}
@@ -569,31 +541,22 @@ test "hash literals" {
 
 test "array literals" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_constant_3 = try code.make(allocator, .constant, &.{3});
-    defer allocator.free(op_constant_3);
-    const op_constant_4 = try code.make(allocator, .constant, &.{4});
-    defer allocator.free(op_constant_4);
-    const op_constant_5 = try code.make(allocator, .constant, &.{5});
-    defer allocator.free(op_constant_5);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_sub = try code.make(allocator, .sub, &.{});
-    defer allocator.free(op_sub);
-    const op_mul = try code.make(allocator, .mul, &.{});
-    defer allocator.free(op_mul);
-    const op_array_0 = try code.make(allocator, .array, &.{0});
-    defer allocator.free(op_array_0);
-    const op_array_3 = try code.make(allocator, .array, &.{3});
-    defer allocator.free(op_array_3);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_constant_3 = makeOp(a, .constant, &.{3});
+    const op_constant_4 = makeOp(a, .constant, &.{4});
+    const op_constant_5 = makeOp(a, .constant, &.{5});
+    const op_add = makeOp(a, .add, &.{});
+    const op_sub = makeOp(a, .sub, &.{});
+    const op_mul = makeOp(a, .mul, &.{});
+    const op_array_0 = makeOp(a, .array, &.{0});
+    const op_array_3 = makeOp(a, .array, &.{3});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         // []
@@ -642,29 +605,21 @@ test "array literals" {
 
 test "index expressions" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_constant_3 = try code.make(allocator, .constant, &.{3});
-    defer allocator.free(op_constant_3);
-    const op_constant_4 = try code.make(allocator, .constant, &.{4});
-    defer allocator.free(op_constant_4);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_sub = try code.make(allocator, .sub, &.{});
-    defer allocator.free(op_sub);
-    const op_array_3 = try code.make(allocator, .array, &.{3});
-    defer allocator.free(op_array_3);
-    const op_hash_2 = try code.make(allocator, .hash, &.{2});
-    defer allocator.free(op_hash_2);
-    const op_index = try code.make(allocator, .index, &.{});
-    defer allocator.free(op_index);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_constant_3 = makeOp(a, .constant, &.{3});
+    const op_constant_4 = makeOp(a, .constant, &.{4});
+    const op_add = makeOp(a, .add, &.{});
+    const op_sub = makeOp(a, .sub, &.{});
+    const op_array_3 = makeOp(a, .array, &.{3});
+    const op_hash_2 = makeOp(a, .hash, &.{2});
+    const op_index = makeOp(a, .index, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -703,22 +658,18 @@ test "index expressions" {
 
 test "function literal expressions" {
     const allocator = testing.allocator;
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_return_value = try code.make(allocator, .return_value, &.{});
-    defer allocator.free(op_return_value);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_return = try code.make(allocator, .op_return, &.{});
-    defer allocator.free(op_return);
-    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
-    defer allocator.free(op_closure_2_0);
-    const op_closure_0_0 = try code.make(allocator, .closure, &.{ 0, 0 });
-    defer allocator.free(op_closure_0_0);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_add = makeOp(a, .add, &.{});
+    const op_return_value = makeOp(a, .return_value, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_return = makeOp(a, .op_return, &.{});
+    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
+    const op_closure_0_0 = makeOp(a, .closure, &.{ 0, 0 });
 
     const tests = [_]CompilerTestCase{
         .{
@@ -779,33 +730,23 @@ test "function literal expressions" {
 
 test "let statement scopes" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
-    defer allocator.free(op_get_global_0);
-    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
-    defer allocator.free(op_set_global_0);
-    const op_set_local_0 = try code.make(allocator, .set_local, &.{0});
-    defer allocator.free(op_set_local_0);
-    const op_set_local_1 = try code.make(allocator, .set_local, &.{1});
-    defer allocator.free(op_set_local_1);
-    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
-    defer allocator.free(op_get_local_0);
-    const op_get_local_1 = try code.make(allocator, .get_local, &.{1});
-    defer allocator.free(op_get_local_1);
-    const op_return_value = try code.make(allocator, .return_value, &.{});
-    defer allocator.free(op_return_value);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
-    defer allocator.free(op_closure_1_0);
-    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
-    defer allocator.free(op_closure_2_0);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_get_global_0 = makeOp(a, .get_global, &.{0});
+    const op_set_global_0 = makeOp(a, .set_global, &.{0});
+    const op_set_local_0 = makeOp(a, .set_local, &.{0});
+    const op_set_local_1 = makeOp(a, .set_local, &.{1});
+    const op_get_local_0 = makeOp(a, .get_local, &.{0});
+    const op_get_local_1 = makeOp(a, .get_local, &.{1});
+    const op_return_value = makeOp(a, .return_value, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_add = makeOp(a, .add, &.{});
+    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
+    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
 
     const tests = [_]CompilerTestCase{
         .{
@@ -874,41 +815,26 @@ test "let statement scopes" {
 
 test "function calls" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_return_value = try code.make(allocator, .return_value, &.{});
-    defer allocator.free(op_return_value);
-    const op_call_0 = try code.make(allocator, .call, &.{0});
-    defer allocator.free(op_call_0);
-    const op_call_1 = try code.make(allocator, .call, &.{1});
-    defer allocator.free(op_call_1);
-    const op_call_3 = try code.make(allocator, .call, &.{3});
-    defer allocator.free(op_call_3);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
-    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
-    defer allocator.free(op_set_global_0);
-    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
-    defer allocator.free(op_get_global_0);
-    const op_return = try code.make(allocator, .op_return, &.{});
-    defer allocator.free(op_return);
-    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
-    defer allocator.free(op_get_local_0);
-    const op_get_local_1 = try code.make(allocator, .get_local, &.{1});
-    defer allocator.free(op_get_local_1);
-    const op_get_local_2 = try code.make(allocator, .get_local, &.{2});
-    defer allocator.free(op_get_local_2);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_constant_3 = try code.make(allocator, .constant, &.{3});
-    defer allocator.free(op_constant_3);
-    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
-    defer allocator.free(op_closure_1_0);
-    const op_closure_0_0 = try code.make(allocator, .closure, &.{ 0, 0 });
-    defer allocator.free(op_closure_0_0);
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_return_value = makeOp(a, .return_value, &.{});
+    const op_call_0 = makeOp(a, .call, &.{0});
+    const op_call_1 = makeOp(a, .call, &.{1});
+    const op_call_3 = makeOp(a, .call, &.{3});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_set_global_0 = makeOp(a, .set_global, &.{0});
+    const op_get_global_0 = makeOp(a, .get_global, &.{0});
+    const op_get_local_0 = makeOp(a, .get_local, &.{0});
+    const op_get_local_1 = makeOp(a, .get_local, &.{1});
+    const op_get_local_2 = makeOp(a, .get_local, &.{2});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_constant_3 = makeOp(a, .constant, &.{3});
+    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
+    const op_closure_0_0 = makeOp(a, .closure, &.{ 0, 0 });
 
     const tests = [_]CompilerTestCase{
         .{
@@ -1011,49 +937,31 @@ test "function calls" {
 
 test "closures" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_get_free_0 = try code.make(allocator, .get_free, &.{0});
-    defer allocator.free(op_get_free_0);
-    const op_get_free_1 = try code.make(allocator, .get_free, &.{1});
-    defer allocator.free(op_get_free_1);
-    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
-    defer allocator.free(op_get_local_0);
-    const op_add = try code.make(allocator, .add, &.{});
-    defer allocator.free(op_add);
-    const op_return_value = try code.make(allocator, .return_value, &.{});
-    defer allocator.free(op_return_value);
-    const op_closure_0_1 = try code.make(allocator, .closure, &.{ 0, 1 });
-    defer allocator.free(op_closure_0_1);
-    const op_closure_0_2 = try code.make(allocator, .closure, &.{ 0, 2 });
-    defer allocator.free(op_closure_0_2);
-    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
-    defer allocator.free(op_closure_1_0);
-    const op_closure_1_1 = try code.make(allocator, .closure, &.{ 1, 1 });
-    defer allocator.free(op_closure_1_1);
-    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
-    defer allocator.free(op_closure_2_0);
-    const op_closure_4_2 = try code.make(allocator, .closure, &.{ 4, 2 });
-    defer allocator.free(op_closure_4_2);
-    const op_closure_5_1 = try code.make(allocator, .closure, &.{ 5, 1 });
-    defer allocator.free(op_closure_5_1);
-    const op_closure_6_0 = try code.make(allocator, .closure, &.{ 6, 0 });
-    defer allocator.free(op_closure_6_0);
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_1 = try code.make(allocator, .constant, &.{1});
-    defer allocator.free(op_constant_1);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_constant_3 = try code.make(allocator, .constant, &.{3});
-    defer allocator.free(op_constant_3);
-    const op_set_local_0 = try code.make(allocator, .set_local, &.{0});
-    defer allocator.free(op_set_local_0);
-    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
-    defer allocator.free(op_get_global_0);
-    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
-    defer allocator.free(op_set_global_0);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_get_free_0 = makeOp(a, .get_free, &.{0});
+    const op_get_free_1 = makeOp(a, .get_free, &.{1});
+    const op_get_local_0 = makeOp(a, .get_local, &.{0});
+    const op_add = makeOp(a, .add, &.{});
+    const op_return_value = makeOp(a, .return_value, &.{});
+    const op_closure_0_1 = makeOp(a, .closure, &.{ 0, 1 });
+    const op_closure_0_2 = makeOp(a, .closure, &.{ 0, 2 });
+    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
+    const op_closure_1_1 = makeOp(a, .closure, &.{ 1, 1 });
+    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
+    const op_closure_4_2 = makeOp(a, .closure, &.{ 4, 2 });
+    const op_closure_5_1 = makeOp(a, .closure, &.{ 5, 1 });
+    const op_closure_6_0 = makeOp(a, .closure, &.{ 6, 0 });
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_constant_3 = makeOp(a, .constant, &.{3});
+    const op_set_local_0 = makeOp(a, .set_local, &.{0});
+    const op_get_global_0 = makeOp(a, .get_global, &.{0});
+    const op_set_global_0 = makeOp(a, .set_global, &.{0});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -1199,35 +1107,24 @@ test "closures" {
 
 test "recursive functions" {
     const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    const op_current_closure = try code.make(allocator, .current_closure, &.{});
-    defer allocator.free(op_current_closure);
-    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
-    defer allocator.free(op_get_local_0);
-    const op_constant_0 = try code.make(allocator, .constant, &.{0});
-    defer allocator.free(op_constant_0);
-    const op_constant_2 = try code.make(allocator, .constant, &.{2});
-    defer allocator.free(op_constant_2);
-    const op_sub = try code.make(allocator, .sub, &.{});
-    defer allocator.free(op_sub);
-    const op_call_1 = try code.make(allocator, .call, &.{1});
-    defer allocator.free(op_call_1);
-    const op_return_value = try code.make(allocator, .return_value, &.{});
-    defer allocator.free(op_return_value);
-    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
-    defer allocator.free(op_closure_1_0);
-    const op_closure_3_0 = try code.make(allocator, .closure, &.{ 3, 0 });
-    defer allocator.free(op_closure_3_0);
-    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
-    defer allocator.free(op_set_global_0);
-    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
-    defer allocator.free(op_get_global_0);
-    const op_set_local_0 = try code.make(allocator, .set_local, &.{0});
-    defer allocator.free(op_set_local_0);
-    const op_call_0 = try code.make(allocator, .call, &.{0});
-    defer allocator.free(op_call_0);
-    const op_pop = try code.make(allocator, .pop, &.{});
-    defer allocator.free(op_pop);
+    const op_current_closure = makeOp(a, .current_closure, &.{});
+    const op_get_local_0 = makeOp(a, .get_local, &.{0});
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_2 = makeOp(a, .constant, &.{2});
+    const op_sub = makeOp(a, .sub, &.{});
+    const op_call_1 = makeOp(a, .call, &.{1});
+    const op_return_value = makeOp(a, .return_value, &.{});
+    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
+    const op_closure_3_0 = makeOp(a, .closure, &.{ 3, 0 });
+    const op_set_global_0 = makeOp(a, .set_global, &.{0});
+    const op_get_global_0 = makeOp(a, .get_global, &.{0});
+    const op_set_local_0 = makeOp(a, .set_local, &.{0});
+    const op_call_0 = makeOp(a, .call, &.{0});
+    const op_pop = makeOp(a, .pop, &.{});
 
     const tests = [_]CompilerTestCase{
         .{

@@ -11,7 +11,7 @@ pub const Object = union(enum) {
     bool: Boolean,
     null: Null,
     err: Error,
-    closure: *Closure,
+    closure: *const Closure,
     compiled_function: *CompiledFunction,
     function: *Function,
     string: *String,

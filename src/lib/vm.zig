@@ -19,9 +19,10 @@ const max_frames = 1024;
 
 const Errors = error{
     StackOverflow,
-    UnknownOpcode,
+    StackUnderflow,
+    TypeMismatch,
     HashNotHashable,
-    UndefinedError,
+    UncallableObject,
     WrongArgumentCount,
 } || std.Io.Writer.Error;
 
@@ -81,14 +82,10 @@ pub const Vm = struct {
 
     pub fn run(self: *Vm) !void {
         while (self.currentFrame().ip < self.currentFrame().instructions().len) {
-            const ins = self.currentFrame().instructions();
-            const ip = self.currentFrame().ip;
-            const op: code.Opcode = @enumFromInt(ins[ip]);
-            self.currentFrame().ip += 1;
+            const op: code.Opcode = @enumFromInt(self.readOperand(u8));
             switch (op) {
                 .constant => {
-                    const const_index = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2;
+                    const const_index = self.readOperand(u16);
                     try self.push(self.constants[const_index]);
                 },
                 .add, .sub, .mul, .div => {
@@ -108,27 +105,24 @@ pub const Vm = struct {
                     try self.executeComparison(op, left, right);
                 },
                 .jump => {
-                    const pos = code.readUint16(ins[ip + 1 ..]);
+                    const pos = self.readOperand(u16);
                     self.currentFrame().ip = pos;
                 },
                 .jump_not_truthy => {
-                    const pos = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2; // skip operand
+                    const pos = self.readOperand(u16);
                     const condition = try self.pop();
                     if (!isTruthy(condition)) {
                         self.currentFrame().ip = pos;
                     }
                 },
                 .array => {
-                    const len = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2; //skip operand
+                    const len = self.readOperand(u16);
                     const array = try self.buildArray(self.sp - len, self.sp);
-                    self.sp -= len; // remove array elements from stack
+                    self.sp -= len;
                     try self.push(.{ .array = array });
                 },
                 .hash => {
-                    const num_elements = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2;
+                    const num_elements = self.readOperand(u16);
                     const hash = try self.buildHash(self.sp - num_elements, self.sp);
                     self.sp -= num_elements;
                     try self.push(.{ .hash = hash });
@@ -145,7 +139,7 @@ pub const Vm = struct {
                     const operand = try self.pop();
                     const int_val = switch (operand) {
                         .int => |v| v.value,
-                        else => return Errors.UnknownOpcode,
+                        else => return Errors.TypeMismatch,
                     };
                     try self.push(.{ .int = Object.Integer.init(-int_val) });
                 },
@@ -159,28 +153,23 @@ pub const Vm = struct {
                     try self.push(result);
                 },
                 .set_global => {
-                    const global_index = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2;
+                    const global_index = self.readOperand(u16);
                     self.globals[global_index] = try self.pop();
                 },
                 .get_global => {
-                    const global_index = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2;
+                    const global_index = self.readOperand(u16);
                     try self.push(self.globals[global_index]);
                 },
                 .set_local => {
-                    const local_index = ins[ip + 1];
-                    self.currentFrame().ip += 1;
+                    const local_index = self.readOperand(u8);
                     self.stack[self.currentFrame().base_pointer + local_index] = try self.pop();
                 },
                 .get_local => {
-                    const local_index = ins[ip + 1];
-                    self.currentFrame().ip += 1;
+                    const local_index = self.readOperand(u8);
                     try self.push(self.stack[self.currentFrame().base_pointer + local_index]);
                 },
                 .get_free => {
-                    const free_index = ins[ip + 1];
-                    self.currentFrame().ip += 1;
+                    const free_index = self.readOperand(u8);
                     const closure = self.currentFrame().closure;
                     try self.push(closure.free_vars[free_index]);
                 },
@@ -188,39 +177,28 @@ pub const Vm = struct {
                     _ = try self.pop();
                 },
                 .get_builtin => {
-                    const builtin_index = ins[ip + 1];
-                    self.currentFrame().ip += 1;
+                    const builtin_index = self.readOperand(u8);
                     const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
                     try self.push(builtins_mod.getObject(b));
                 },
                 .current_closure => {
                     const current_closure = self.currentFrame().closure;
-                    try self.push(.{ .closure = @constCast(current_closure) });
+                    try self.push(.{ .closure = current_closure });
                 },
                 .closure => {
-                    const const_index = code.readUint16(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 2;
-                    const num_free = code.readUint8(ins[ip + 3 ..]);
-                    self.currentFrame().ip += 1;
+                    const const_index = self.readOperand(u16);
+                    const num_free = self.readOperand(u8);
 
-                    var free_list = try std.ArrayList(Object).initCapacity(self.allocator, num_free);
-
-                    for (0..num_free) |idx| {
-                        try free_list.append(self.allocator, self.stack[self.sp - num_free + idx]);
-                    }
+                    const free_vars = try self.allocator.dupe(Object, self.stack[self.sp - num_free .. self.sp]);
                     self.sp -= num_free;
 
                     const compiled_fn = self.constants[const_index].compiled_function;
                     const closure = try self.allocator.create(Object.Closure);
-                    closure.* = Object.Closure.init(
-                        compiled_fn,
-                        try free_list.toOwnedSlice(self.allocator),
-                    );
+                    closure.* = Object.Closure.init(compiled_fn, free_vars);
                     try self.push(.{ .closure = closure });
                 },
                 .call => {
-                    const num_args = code.readUint8(ins[ip + 1 ..]);
-                    self.currentFrame().ip += 1;
+                    const num_args = self.readOperand(u8);
 
                     const top_obj = self.stack[self.sp - 1 - num_args];
                     switch (top_obj) {
@@ -241,7 +219,7 @@ pub const Vm = struct {
                             self.sp = self.sp - num_args - 1;
                             try self.push(result);
                         },
-                        else => return error.UndefinedError,
+                        else => return error.UncallableObject,
                     }
                 },
                 .return_value => {
@@ -267,7 +245,7 @@ pub const Vm = struct {
         const result = switch (op) {
             .equal => std.meta.eql(left, right),
             .not_equal => !std.meta.eql(left, right),
-            else => return Errors.UnknownOpcode,
+            else => return Errors.TypeMismatch,
         };
 
         try self.push(nativeBoolToBooleanObject(result));
@@ -278,7 +256,7 @@ pub const Vm = struct {
             .equal => left == right,
             .not_equal => left != right,
             .greater_than => left > right,
-            else => return Errors.UnknownOpcode,
+            else => return Errors.TypeMismatch,
         };
 
         try self.push(nativeBoolToBooleanObject(result));
@@ -291,7 +269,7 @@ pub const Vm = struct {
         if (op == .add and left == .string and right == .string) {
             return self.executeStringConcatenation(left.string.value, right.string.value);
         }
-        return Errors.UnknownOpcode;
+        return Errors.TypeMismatch;
     }
 
     fn executeBinaryIntegerOp(self: *Vm, op: code.Opcode, left: i64, right: i64) !void {
@@ -352,7 +330,7 @@ pub const Vm = struct {
         if (left == .hash) {
             return self.executeHashIndex(left.hash, index_val);
         }
-        return Errors.UnknownOpcode;
+        return Errors.TypeMismatch;
     }
 
     fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) !void {
@@ -371,8 +349,17 @@ pub const Vm = struct {
         return self.push(Null);
     }
 
+    fn readOperand(self: *Vm, comptime T: type) T {
+        const f = self.currentFrame();
+        const ins = f.instructions();
+        const width = @sizeOf(T);
+        const result = std.mem.readInt(T, ins[f.ip..][0..width], .big);
+        f.ip += width;
+        return result;
+    }
+
     fn pop(self: *Vm) !Object {
-        if (self.sp == 0) return Errors.StackOverflow; // Underflow error
+        if (self.sp == 0) return Errors.StackUnderflow;
         const obj = self.stack[self.sp - 1];
         self.sp -= 1;
         return obj;

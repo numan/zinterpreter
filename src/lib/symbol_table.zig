@@ -22,17 +22,7 @@ pub const SymbolTable = struct {
     num_definitions: usize,
     free_symbols: std.ArrayList(Symbol),
 
-    pub fn init(allocator: std.mem.Allocator) SymbolTable {
-        return .{
-            .outer = null,
-            .allocator = allocator,
-            .store = std.StringHashMap(Symbol).init(allocator),
-            .num_definitions = 0,
-            .free_symbols = .empty,
-        };
-    }
-
-    pub fn initEnclosed(allocator: std.mem.Allocator, outer: *SymbolTable) SymbolTable {
+    pub fn init(allocator: std.mem.Allocator, outer: ?*SymbolTable) SymbolTable {
         return .{
             .outer = outer,
             .allocator = allocator,

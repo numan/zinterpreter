@@ -2,22 +2,15 @@ const std = @import("std");
 const Lexer = @import("../lib/lexer.zig").Lexer;
 const Parser = @import("../lib/parser.zig").Parser;
 const VmState = @import("../lib/vm_state.zig").VmState;
+const repl_utils = @import("repl_utils.zig");
 
-const PROMPT = ">> ";
-const MONKEY_FACE =
-    \\            __,__
-    \\   .--.  .-"     "-.  .--.
-    \\  / .. \/  .-. .-.  \/ .. \
-    \\ | |  '|  /   Y   \  |'  | |
-    \\ | \   \  \ 0 | 0 /  /   / |
-    \\ \ '- ,\.-"""""""-./, -' /
-    \\   ''-' /_   ^ ^   _\ '-''
-    \\       |  \._   _./  |
-    \\       \   \ '~' /   /
-    \\        '._ '-=-' _.'
-    \\           '-----'
-    \\
-;
+const PROMPT = repl_utils.PROMPT;
+
+fn showPrompt(stdout: *std.Io.Writer) !void {
+    try stdout.print("{s} ", .{PROMPT});
+    try stdout.flush();
+}
+
 pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
@@ -31,8 +24,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
     var state = VmState.init(allocator);
     defer state.deinit();
 
-    try stdout.print("{s} ", .{PROMPT});
-    try stdout.flush();
+    try showPrompt(stdout);
 
     while (stdin.takeDelimiterExclusive('\n')) |line| {
         stdin.toss(1);
@@ -47,28 +39,25 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
         const errors = parser.allErrors();
 
         if (errors.len != 0) {
-            try printParseErrors(errors, stdout);
+            try repl_utils.printParseErrors(errors, stdout);
         } else {
             var compiler = state.newCompiler() catch |err| {
                 try stdout.print("Compiler error: {s}\n", .{@errorName(err)});
-                try stdout.print("{s} ", .{PROMPT});
-                try stdout.flush();
+                try showPrompt(stdout);
                 continue;
             };
             defer compiler.deinit();
 
             compiler.compile(program) catch |err| {
                 try stdout.print("Compiler error: {s}\n", .{@errorName(err)});
-                try stdout.print("{s} ", .{PROMPT});
-                try stdout.flush();
+                try showPrompt(stdout);
                 continue;
             };
 
             const bc = compiler.bytecode();
 
             if (bc.instructions.len == 0) {
-                try stdout.print("{s} ", .{PROMPT});
-                try stdout.flush();
+                try showPrompt(stdout);
                 continue;
             }
 
@@ -78,8 +67,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             };
             vm.run() catch |err| {
                 try stdout.print("VM error: {s}\n", .{@errorName(err)});
-                try stdout.print("{s} ", .{PROMPT});
-                try stdout.flush();
+                try showPrompt(stdout);
                 continue;
             };
 
@@ -92,9 +80,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             try stdout.writeAll("\n");
         }
 
-        try stdout.print("{s} ", .{PROMPT});
-
-        try stdout.flush();
+        try showPrompt(stdout);
     } else |err| {
         switch (err) {
             error.EndOfStream => {
@@ -110,16 +96,4 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
 
         try stdout.flush();
     }
-}
-
-pub fn printParseErrors(errors: [][]const u8, writer: *std.Io.Writer) !void {
-    try writer.writeAll(MONKEY_FACE);
-    try writer.writeAll("\n");
-    try writer.writeAll("Whoops! We ran into some monkey business here!\n");
-    try writer.writeAll(" Parser Errors:\n");
-
-    for (errors) |e| {
-        try writer.print("\t{s}\n", .{e});
-    }
-    try writer.flush();
 }

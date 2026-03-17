@@ -18,6 +18,8 @@ const Error = error{
     UndefinedVariable,
 } || std.mem.Allocator.Error;
 
+const jump_placeholder: usize = 9999;
+
 const EmittedInstruction = struct {
     opcode: code.Opcode,
     position: usize,
@@ -32,18 +34,16 @@ const CompilationScope = struct {
 pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
     constants: *std.ArrayList(Object),
-    constants_allocator: std.mem.Allocator,
     symbol_table: *SymbolTable,
     scopes: std.ArrayList(CompilationScope),
     scope_index: usize = 0,
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator, st: *SymbolTable, constants: *std.ArrayList(Object), constants_alloc: std.mem.Allocator) Compiler {
+    pub fn init(alloc: std.mem.Allocator, st: *SymbolTable, constants: *std.ArrayList(Object)) Compiler {
         return Compiler{
             .arena = std.heap.ArenaAllocator.init(alloc),
             .constants = constants,
-            .constants_allocator = constants_alloc,
             .symbol_table = st,
             .scopes = .empty,
         };
@@ -56,12 +56,14 @@ pub const Compiler = struct {
         // not for the initial main program scope
         if (self.scopes.items.len > 1) {
             const enclosed = try self.allocator().create(SymbolTable);
-            enclosed.* = SymbolTable.initEnclosed(self.allocator(), self.symbol_table);
+            enclosed.* = SymbolTable.init(self.allocator(), self.symbol_table);
             self.symbol_table = enclosed;
         }
     }
 
-    pub fn leaveScope(self: *Self) struct { instructions: ?code.Instructions, num_locals: usize } {
+    const ScopeResult = struct { instructions: ?code.Instructions, num_locals: usize };
+
+    pub fn leaveScope(self: *Self) ScopeResult {
         if (self.scope_index == 0) {
             return .{ .instructions = null, .num_locals = 0 };
         }
@@ -199,14 +201,14 @@ pub const Compiler = struct {
     fn compileIfExpression(self: *Self, if_expression: *const ExpressionType.IfExpression) !void {
         try self.compile(if_expression.condition);
 
-        const jump_not_truthy_pos = try self.emit(.jump_not_truthy, &.{9999});
+        const jump_not_truthy_pos = try self.emit(.jump_not_truthy, &.{jump_placeholder});
 
         try self.compile(&if_expression.consequence);
 
         self.removeLast(.pop);
 
         // Always emit OpJump after consequence
-        const jump_pos = try self.emit(.jump, &.{9999});
+        const jump_pos = try self.emit(.jump, &.{jump_placeholder});
         const after_consequence_pos = self.currentScope().instructions.items.len;
         try self.changeOperand(jump_not_truthy_pos, after_consequence_pos);
 
@@ -310,16 +312,10 @@ pub const Compiler = struct {
     inline fn loadSymbol(self: *Self, symbol: symbol_table.Symbol) !void {
         switch (symbol.scope) {
             .function => _ = try self.emit(.current_closure, &.{}),
-            else => {
-                const op: code.Opcode = switch (symbol.scope) {
-                    .global => .get_global,
-                    .local => .get_local,
-                    .builtin => .get_builtin,
-                    .free => .get_free,
-                    .function => unreachable,
-                };
-                _ = try self.emit(op, &.{symbol.index});
-            },
+            .global => _ = try self.emit(.get_global, &.{symbol.index}),
+            .local => _ = try self.emit(.get_local, &.{symbol.index}),
+            .builtin => _ = try self.emit(.get_builtin, &.{symbol.index}),
+            .free => _ = try self.emit(.get_free, &.{symbol.index}),
         }
     }
 
@@ -357,7 +353,7 @@ pub const Compiler = struct {
     }
 
     fn addConstant(self: *Self, obj: Object) !usize {
-        try self.constants.append(self.constants_allocator, obj);
+        try self.constants.append(self.arena.child_allocator, obj);
         return self.constants.items.len - 1;
     }
 
