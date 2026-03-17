@@ -128,8 +128,8 @@ pub const Compiler = struct {
                 _ = try self.emit(.pop, &.{});
             },
             .let => |*let_stmt| {
-                try self.compile(&let_stmt.value.expression);
                 const sym = try self.symbol_table.define(let_stmt.name.value);
+                try self.compile(&let_stmt.value.expression);
                 const op: code.Opcode = if (sym.scope == .global) .set_global else .set_local;
                 _ = try self.emit(op, &.{sym.index});
             },
@@ -272,6 +272,10 @@ pub const Compiler = struct {
     fn compileFunctionLiteral(self: *Self, fn_lit: *const ExpressionType.FunctionLiteral) !void {
         try self.enterScope();
 
+        if (fn_lit.name) |name| {
+            _ = try self.symbol_table.defineFunctionName(name);
+        }
+
         for (fn_lit.*.parameters) |*param| {
             _ = try self.symbol_table.define(param.*.value);
         }
@@ -304,13 +308,19 @@ pub const Compiler = struct {
     }
 
     inline fn loadSymbol(self: *Self, symbol: symbol_table.Symbol) !void {
-        const op: code.Opcode = switch (symbol.scope) {
-            .global => .get_global,
-            .local => .get_local,
-            .builtin => .get_builtin,
-            .free => .get_free,
-        };
-        _ = try self.emit(op, &.{symbol.index});
+        switch (symbol.scope) {
+            .function => _ = try self.emit(.current_closure, &.{}),
+            else => {
+                const op: code.Opcode = switch (symbol.scope) {
+                    .global => .get_global,
+                    .local => .get_local,
+                    .builtin => .get_builtin,
+                    .free => .get_free,
+                    .function => unreachable,
+                };
+                _ = try self.emit(op, &.{symbol.index});
+            },
+        }
     }
 
     fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {

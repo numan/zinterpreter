@@ -6,6 +6,7 @@ pub const SymbolScope = enum {
     local,
     builtin,
     free,
+    function,
 };
 
 pub const Symbol = struct {
@@ -42,15 +43,14 @@ pub const SymbolTable = struct {
     }
 
     pub fn define(self: *SymbolTable, name: []const u8) !Symbol {
-        const owned_name = try self.store.allocator.dupe(u8, name);
-        const symbol = Symbol{
-            .name = owned_name,
-            .scope = if (self.outer == null) .global else .local,
-            .index = self.num_definitions,
-        };
-        try self.store.put(owned_name, symbol);
+        const scope: SymbolScope = if (self.outer == null) .global else .local;
+        const symbol = try self.putSymbol(name, scope, self.num_definitions);
         self.num_definitions += 1;
         return symbol;
+    }
+
+    pub fn defineFunctionName(self: *SymbolTable, name: []const u8) !Symbol {
+        return self.putSymbol(name, .function, 0);
     }
 
     pub fn resolve(self: *SymbolTable, name: []const u8) ?Symbol {
@@ -59,7 +59,7 @@ pub const SymbolTable = struct {
         }
         if (self.outer) |outer| {
             const obj = outer.resolve(name) orelse return null;
-            if (obj.scope == .global or obj.scope == .builtin) {
+            if (obj.scope == .global or obj.scope == .builtin or obj.scope == .function) {
                 return obj;
             }
             return self.defineFree(obj) catch return null;
@@ -76,16 +76,17 @@ pub const SymbolTable = struct {
 
     fn defineFree(self: *SymbolTable, original: Symbol) !Symbol {
         try self.free_symbols.append(self.store.allocator, original);
+        return self.putSymbol(original.name, .free, self.free_symbols.items.len - 1);
+    }
 
-        const owned_name = try self.store.allocator.dupe(u8, original.name);
-        const free_copy: Symbol = .{
-            .name = owned_name,
-            .index = self.free_symbols.items.len - 1,
-            .scope = .free,
-        };
-
-        try self.store.put(owned_name, free_copy);
-        return free_copy;
+    fn putSymbol(self: *SymbolTable, name: []const u8, scope: SymbolScope, index: usize) !Symbol {
+        const gop = try self.store.getOrPut(name);
+        if (!gop.found_existing) {
+            gop.key_ptr.* = try self.store.allocator.dupe(u8, name);
+        }
+        const symbol = Symbol{ .name = gop.key_ptr.*, .scope = scope, .index = index };
+        gop.value_ptr.* = symbol;
+        return symbol;
     }
 
     pub fn deinit(self: *SymbolTable) void {

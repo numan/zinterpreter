@@ -134,7 +134,11 @@ pub const Parser = struct {
 
         self.nextToken();
 
-        const exp_value = try self.parseExpression(.lowest) orelse return null;
+        var exp_value = try self.parseExpression(.lowest) orelse return null;
+
+        if (exp_value.expression == .function_literal) {
+            exp_value.expression.function_literal.name = iden_token.ch;
+        }
 
         if (self.peek_token.token_type == .semicolon) {
             self.nextToken();

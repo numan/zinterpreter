@@ -1196,3 +1196,109 @@ test "closures" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "recursive functions" {
+    const allocator = testing.allocator;
+
+    const op_current_closure = try code.make(allocator, .current_closure, &.{});
+    defer allocator.free(op_current_closure);
+    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
+    defer allocator.free(op_get_local_0);
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_sub = try code.make(allocator, .sub, &.{});
+    defer allocator.free(op_sub);
+    const op_call_1 = try code.make(allocator, .call, &.{1});
+    defer allocator.free(op_call_1);
+    const op_return_value = try code.make(allocator, .return_value, &.{});
+    defer allocator.free(op_return_value);
+    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
+    defer allocator.free(op_closure_1_0);
+    const op_closure_3_0 = try code.make(allocator, .closure, &.{ 3, 0 });
+    defer allocator.free(op_closure_3_0);
+    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
+    defer allocator.free(op_set_global_0);
+    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
+    defer allocator.free(op_get_global_0);
+    const op_set_local_0 = try code.make(allocator, .set_local, &.{0});
+    defer allocator.free(op_set_local_0);
+    const op_call_0 = try code.make(allocator, .call, &.{0});
+    defer allocator.free(op_call_0);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input =
+                \\let countDown = fn(x) { countDown(x - 1); };
+                \\countDown(1);
+            ,
+            .expected_constants = &.{
+                .{ .int = 1 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_current_closure,
+                        op_get_local_0,
+                        op_constant_0,
+                        op_sub,
+                        op_call_1,
+                        op_return_value,
+                    },
+                },
+                .{ .int = 1 },
+            },
+            .expected_instructions = &.{
+                op_closure_1_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_constant_2,
+                op_call_1,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+                \\let wrapper = fn() {
+                \\    let countDown = fn(x) { countDown(x - 1); };
+                \\    countDown(1);
+                \\};
+                \\wrapper();
+            ,
+            .expected_constants = &.{
+                .{ .int = 1 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_current_closure,
+                        op_get_local_0,
+                        op_constant_0,
+                        op_sub,
+                        op_call_1,
+                        op_return_value,
+                    },
+                },
+                .{ .int = 1 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_closure_1_0,
+                        op_set_local_0,
+                        op_get_local_0,
+                        op_constant_2,
+                        op_call_1,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_closure_3_0,
+                op_set_global_0,
+                op_get_global_0,
+                op_call_0,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}

@@ -193,6 +193,10 @@ pub const Vm = struct {
                     const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
                     try self.push(builtins_mod.getObject(b));
                 },
+                .current_closure => {
+                    const current_closure = self.currentFrame().closure;
+                    try self.push(.{ .closure = @constCast(current_closure) });
+                },
                 .closure => {
                     const const_index = code.readUint16(ins[ip + 1 ..]);
                     self.currentFrame().ip += 2;

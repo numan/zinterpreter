@@ -242,3 +242,30 @@ test "resolve unknown" {
     const result = global.resolve("x");
     try testing.expect(result == null);
 }
+
+test "define and resolve function name" {
+    var global = SymbolTable.init(testing.allocator);
+    defer global.deinit();
+    _ = try global.defineFunctionName("a");
+
+    const expected = Symbol{ .name = "a", .scope = .function, .index = 0 };
+    const result = global.resolve("a") orelse {
+        std.debug.print("function name 'a' not resolvable\n", .{});
+        return error.TestUnexpectedResult;
+    };
+    try expectSymbolEqual(expected, result);
+}
+
+test "shadowing function name" {
+    var global = SymbolTable.init(testing.allocator);
+    defer global.deinit();
+    _ = try global.defineFunctionName("a");
+    _ = try global.define("a");
+
+    const expected = Symbol{ .name = "a", .scope = .global, .index = 0 };
+    const result = global.resolve("a") orelse {
+        std.debug.print("function name 'a' not resolvable\n", .{});
+        return error.TestUnexpectedResult;
+    };
+    try expectSymbolEqual(expected, result);
+}

@@ -663,3 +663,55 @@ test "closures" {
 
     try runVmTests(&tests);
 }
+
+test "recursive functions" {
+    const tests = [_]VmTestCase{
+        .{
+            .input =
+                \\let countDown = fn(x) {
+                \\    if (x == 0) {
+                \\        return 0;
+                \\    } else {
+                \\        countDown(x - 1);
+                \\    }
+                \\};
+                \\countDown(1);
+            ,
+            .expected = .{ .int = 0 },
+        },
+        .{
+            .input =
+                \\let countDown = fn(x) {
+                \\    if (x == 0) {
+                \\        return 0;
+                \\    } else {
+                \\        countDown(x - 1);
+                \\    }
+                \\};
+                \\let wrapper = fn() {
+                \\    countDown(1);
+                \\};
+                \\wrapper();
+            ,
+            .expected = .{ .int = 0 },
+        },
+        .{
+            .input =
+                \\let wrapper = fn() {
+                \\    let countDown = fn(x) {
+                \\        if (x == 0) {
+                \\            return 0;
+                \\        } else {
+                \\            countDown(x - 1);
+                \\        }
+                \\    };
+                \\    countDown(1);
+                \\};
+                \\wrapper();
+            ,
+            .expected = .{ .int = 0 },
+        },
+    };
+
+    try runVmTests(&tests);
+}

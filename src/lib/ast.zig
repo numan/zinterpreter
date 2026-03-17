@@ -164,6 +164,7 @@ pub const ExpressionType = union(enum) {
                     .token = try func.token.clone(allocator),
                     .parameters = params,
                     .body = try func.body.clone(allocator),
+                    .name = func.name,
                 } };
             },
             .call_expression => |call| blk: {
@@ -338,6 +339,7 @@ pub const ExpressionType = union(enum) {
         token: Token,
         parameters: []Identifier,
         body: StatementType.BlockStatement,
+        name: ?[]const u8 = null,
 
         const Self = @This();
 
@@ -350,11 +352,16 @@ pub const ExpressionType = union(enum) {
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
-            try writer.print("{s}(", .{self.token.ch});
+            try writer.print("{s}", .{self.token.ch});
+            if (self.name) |name| {
+                writer.print(" {s}(", .{name}) catch unreachable;
+            } else {
+                try writer.writeAll("(");
+            }
             for (self.parameters, 0..) |param, i| {
                 try param.toString(writer);
                 if (i < self.parameters.len - 1) {
-                    _ = try writer.write(", ");
+                    try writer.writeAll(", ");
                 }
             }
             _ = try writer.write(") ");

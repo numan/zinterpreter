@@ -1293,3 +1293,45 @@ test "assign expression precedence" {
         try testing.expectEqualStrings(case.expected, output_writer.written());
     }
 }
+
+test "print function literal with name" {
+    var output_writer = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer output_writer.deinit();
+
+    const body = ast.StatementType.BlockStatement.init(Token.init(.lbrace, "{"), std.testing.allocator);
+
+    const fn_lit = ast.ExpressionType.FunctionLiteral{
+        .token = Token.init(.function, "fn"),
+        .parameters = &.{},
+        .body = body,
+        .name = "myFunction",
+    };
+
+    try fn_lit.toString(&output_writer.writer);
+    try testing.expectEqualStrings("fn myFunction() ", output_writer.written());
+}
+
+test "function literal with name" {
+    const input = "let myFunction = fn() { };";
+
+    const allocator = std.testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const let_stmt = switch (program.statements.items[0]) {
+        .let => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    const function = switch (let_stmt.value.expression) {
+        .function_literal => |val| val,
+        else => return error.TestUnexpectedResult,
+    };
+
+    try testing.expectEqualStrings("myFunction", function.name orelse return error.TestUnexpectedResult);
+}
