@@ -37,9 +37,10 @@ pub const Vm = struct {
     writer: *std.Io.Writer,
 
     pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator, writer: *std.Io.Writer) !Vm {
+        const main_fn = try allocator.create(Object.CompiledFunction);
+        main_fn.* = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
         const main_closure = try allocator.create(Object.Closure);
-        var main_fn: Object.CompiledFunction = .{ .instructions = bytecode.instructions, .num_locals = 0, .num_parameters = 0 };
-        main_closure.* = Object.Closure.init(&main_fn, &.{});
+        main_closure.* = Object.Closure.init(main_fn, &.{});
 
         var vm = Vm{
             .constants = bytecode.constants,

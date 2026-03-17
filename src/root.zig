@@ -5,6 +5,12 @@ const std = @import("std");
 const testing = std.testing;
 pub const lexer = @import("lib/lexer.zig");
 pub const parser = @import("lib/parser.zig");
+pub const compiler = @import("lib/compiler.zig");
+pub const vm = @import("lib/vm.zig");
+pub const evaluator = @import("lib/evaluator.zig");
+pub const gc = @import("lib/gc.zig");
+pub const object = @import("lib/object.zig");
+pub const symbol_table = @import("lib/symbol_table.zig");
 pub const repl = @import("repl/vm_repl.zig");
 
 comptime {

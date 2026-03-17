@@ -113,4 +113,26 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    // Benchmark executable
+    const bench_mod = b.createModule(.{
+        .root_source_file = b.path("src/benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    bench_mod.addImport("zinterpreter_lib", lib_mod);
+
+    const bench_exe = b.addExecutable(.{
+        .name = "fibonacci",
+        .root_module = bench_mod,
+    });
+    b.installArtifact(bench_exe);
+
+    const bench_run_cmd = b.addRunArtifact(bench_exe);
+    bench_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        bench_run_cmd.addArgs(args);
+    }
+    const bench_step = b.step("benchmark", "Run the fibonacci benchmark");
+    bench_step.dependOn(&bench_run_cmd.step);
 }
