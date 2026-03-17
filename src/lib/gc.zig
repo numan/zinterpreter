@@ -5,13 +5,30 @@ const environment = @import("environment.zig");
 const Object = object.Object;
 const Environment = environment.Environment;
 
+/// Wraps a heap-allocated object type with GC metadata.
+/// The Object union stores *T pointing to the `.data` field;
+/// use `gcMeta(T, ptr)` to recover the wrapper via @fieldParentPtr.
+/// Only objects allocated through Gc carry this wrapper — VM-allocated
+/// objects must never be passed to retainObject/decrementRefCount.
+fn GcManaged(comptime T: type) type {
+    return struct {
+        data: T,
+        marked: bool = false,
+        ref_count: usize = 0,
+    };
+}
+
+fn gcMeta(comptime T: type, ptr: *T) *GcManaged(T) {
+    return @fieldParentPtr("data", ptr);
+}
+
 pub const Gc = struct {
     allocator: std.mem.Allocator,
     environments: std.ArrayList(*Environment),
-    functions: std.ArrayList(*Object.Function),
-    strings: std.ArrayList(*Object.String),
-    arrays: std.ArrayList(*Object.Array),
-    hashes: std.ArrayList(*Object.Hash),
+    functions: std.ArrayList(*GcManaged(Object.Function)),
+    strings: std.ArrayList(*GcManaged(Object.String)),
+    arrays: std.ArrayList(*GcManaged(Object.Array)),
+    hashes: std.ArrayList(*GcManaged(Object.Hash)),
 
     const Self = @This();
 
@@ -27,27 +44,27 @@ pub const Gc = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.strings.items) |string_obj| {
-            self.allocator.free(string_obj.value);
-            self.allocator.destroy(string_obj);
+        for (self.strings.items) |managed| {
+            self.allocator.free(managed.data.value);
+            self.allocator.destroy(managed);
         }
         self.strings.deinit(self.allocator);
 
-        for (self.functions.items) |function_obj| {
-            function_obj.deinit();
-            self.allocator.destroy(function_obj);
+        for (self.functions.items) |managed| {
+            managed.data.deinit();
+            self.allocator.destroy(managed);
         }
         self.functions.deinit(self.allocator);
 
-        for (self.arrays.items) |array_obj| {
-            self.allocator.free(array_obj.elements);
-            self.allocator.destroy(array_obj);
+        for (self.arrays.items) |managed| {
+            self.allocator.free(managed.data.elements);
+            self.allocator.destroy(managed);
         }
         self.arrays.deinit(self.allocator);
 
-        for (self.hashes.items) |hash_obj| {
-            hash_obj.pairs.deinit();
-            self.allocator.destroy(hash_obj);
+        for (self.hashes.items) |managed| {
+            managed.data.pairs.deinit();
+            self.allocator.destroy(managed);
         }
         self.hashes.deinit(self.allocator);
 
@@ -78,22 +95,22 @@ pub const Gc = struct {
     }
 
     pub fn allocFunction(self: *Self, function_obj: Object.Function) !Object {
-        const function_ptr = try self.allocator.create(Object.Function);
-        errdefer self.allocator.destroy(function_ptr);
-        function_ptr.* = function_obj;
-        self.retainEnvironment(function_ptr.environment);
-        try self.functions.append(self.allocator, function_ptr);
-        return .{ .function = function_ptr };
+        const managed = try self.allocator.create(GcManaged(Object.Function));
+        errdefer self.allocator.destroy(managed);
+        managed.* = .{ .data = function_obj };
+        self.retainEnvironment(managed.data.environment);
+        try self.functions.append(self.allocator, managed);
+        return .{ .function = &managed.data };
     }
 
     pub fn allocString(self: *Self, value: []const u8) !Object {
         const duped_value = try self.allocator.dupe(u8, value);
         errdefer self.allocator.free(duped_value);
-        const string_ptr = try self.allocator.create(Object.String);
-        errdefer self.allocator.destroy(string_ptr);
-        string_ptr.* = .{ .value = duped_value, .marked = false };
-        try self.strings.append(self.allocator, string_ptr);
-        return .{ .string = string_ptr };
+        const managed = try self.allocator.create(GcManaged(Object.String));
+        errdefer self.allocator.destroy(managed);
+        managed.* = .{ .data = .{ .value = duped_value } };
+        try self.strings.append(self.allocator, managed);
+        return .{ .string = &managed.data };
     }
 
     pub fn allocStringConcat(self: *Self, left: []const u8, right: []const u8) !Object {
@@ -101,11 +118,11 @@ pub const Gc = struct {
         errdefer self.allocator.free(buf);
         @memcpy(buf[0..left.len], left);
         @memcpy(buf[left.len..], right);
-        const string_ptr = try self.allocator.create(Object.String);
-        errdefer self.allocator.destroy(string_ptr);
-        string_ptr.* = .{ .value = buf, .marked = false };
-        try self.strings.append(self.allocator, string_ptr);
-        return .{ .string = string_ptr };
+        const managed = try self.allocator.create(GcManaged(Object.String));
+        errdefer self.allocator.destroy(managed);
+        managed.* = .{ .data = .{ .value = buf } };
+        try self.strings.append(self.allocator, managed);
+        return .{ .string = &managed.data };
     }
 
     pub fn allocArray(self: *Self, elements: []const Object) !Object {
@@ -114,35 +131,47 @@ pub const Gc = struct {
         for (duped_elements) |elem| {
             self.retainObject(elem);
         }
-        const array_ptr = try self.allocator.create(Object.Array);
-        errdefer self.allocator.destroy(array_ptr);
-        array_ptr.* = .{ .elements = duped_elements, .marked = false };
-        try self.arrays.append(self.allocator, array_ptr);
-        return .{ .array = array_ptr };
+        const managed = try self.allocator.create(GcManaged(Object.Array));
+        errdefer self.allocator.destroy(managed);
+        managed.* = .{ .data = .{ .elements = duped_elements } };
+        try self.arrays.append(self.allocator, managed);
+        return .{ .array = &managed.data };
     }
 
     pub fn allocHash(self: *Self, pairs: std.AutoHashMap(Object.HashKey, Object.HashPair)) !Object {
-        const hash_ptr = try self.allocator.create(Object.Hash);
-        errdefer self.allocator.destroy(hash_ptr);
-        hash_ptr.* = .{ .pairs = pairs, .marked = false };
-        var iterator = hash_ptr.pairs.iterator();
+        const managed = try self.allocator.create(GcManaged(Object.Hash));
+        errdefer self.allocator.destroy(managed);
+        managed.* = .{ .data = .{ .pairs = pairs } };
+        var iterator = managed.data.pairs.iterator();
         while (iterator.next()) |entry| {
             self.retainObject(entry.value_ptr.key);
             self.retainObject(entry.value_ptr.value);
         }
-        try self.hashes.append(self.allocator, hash_ptr);
-        return .{ .hash = hash_ptr };
+        try self.hashes.append(self.allocator, managed);
+        return .{ .hash = &managed.data };
+    }
+
+    /// Wraps an externally-created array into GcManaged tracking.
+    /// Frees the original *Array and returns the new *Array inside the wrapper.
+    pub fn trackArray(self: *Self, arr: *Object.Array) !*Object.Array {
+        const managed = try self.allocator.create(GcManaged(Object.Array));
+        managed.* = .{ .data = arr.* };
+        self.allocator.destroy(arr);
+        try self.arrays.append(self.allocator, managed);
+        return &managed.data;
     }
 
     // --- Reference counting: retain/decrement ---
+    // NOTE: These methods assume the object was allocated through Gc
+    // (i.e. wrapped in GcManaged). Calling with VM-allocated objects is UB.
 
     pub fn retainObject(self: *Self, obj: Object) void {
         _ = self;
         switch (obj) {
-            .function => |f| f.ref_count += 1,
-            .string => |s| s.ref_count += 1,
-            .array => |a| a.ref_count += 1,
-            .hash => |h| h.ref_count += 1,
+            .function => |f| gcMeta(Object.Function, f).ref_count += 1,
+            .string => |s| gcMeta(Object.String, s).ref_count += 1,
+            .array => |a| gcMeta(Object.Array, a).ref_count += 1,
+            .hash => |h| gcMeta(Object.Hash, h).ref_count += 1,
             else => {},
         }
     }
@@ -150,10 +179,10 @@ pub const Gc = struct {
     pub fn decrementRefCount(self: *Self, obj: Object) void {
         _ = self;
         switch (obj) {
-            .function => |f| f.ref_count -= 1,
-            .string => |s| s.ref_count -= 1,
-            .array => |a| a.ref_count -= 1,
-            .hash => |h| h.ref_count -= 1,
+            .function => |f| gcMeta(Object.Function, f).ref_count -= 1,
+            .string => |s| gcMeta(Object.String, s).ref_count -= 1,
+            .array => |a| gcMeta(Object.Array, a).ref_count -= 1,
+            .hash => |h| gcMeta(Object.Hash, h).ref_count -= 1,
             else => {},
         }
     }
@@ -201,6 +230,20 @@ pub const Gc = struct {
         return null;
     }
 
+    // --- Public helpers ---
+
+    /// Returns the GC ref_count for a managed object. For testing.
+    pub fn refCount(self: *const Self, obj: Object) usize {
+        _ = self;
+        return switch (obj) {
+            .function => |f| gcMeta(Object.Function, f).ref_count,
+            .string => |s| gcMeta(Object.String, s).ref_count,
+            .array => |a| gcMeta(Object.Array, a).ref_count,
+            .hash => |h| gcMeta(Object.Hash, h).ref_count,
+            else => 0,
+        };
+    }
+
     // --- Mark and sweep ---
 
     pub fn collect(self: *Self, root: *Environment) void {
@@ -211,27 +254,31 @@ pub const Gc = struct {
     fn markObject(self: *Self, obj: Object) void {
         switch (obj) {
             .function => |function_obj| {
-                if (!isInList(*Object.Function, self.functions.items, function_obj)) return;
-                if (function_obj.marked) return;
-                function_obj.marked = true;
+                const managed = gcMeta(Object.Function, function_obj);
+                if (!isInList(*GcManaged(Object.Function), self.functions.items, managed)) return;
+                if (managed.marked) return;
+                managed.marked = true;
                 self.markEnvironment(function_obj.environment);
             },
             .string => |string_obj| {
-                if (!isInList(*Object.String, self.strings.items, string_obj)) return;
-                string_obj.marked = true;
+                const managed = gcMeta(Object.String, string_obj);
+                if (!isInList(*GcManaged(Object.String), self.strings.items, managed)) return;
+                managed.marked = true;
             },
             .array => |array_obj| {
-                if (!isInList(*Object.Array, self.arrays.items, array_obj)) return;
-                if (array_obj.marked) return;
-                array_obj.marked = true;
+                const managed = gcMeta(Object.Array, array_obj);
+                if (!isInList(*GcManaged(Object.Array), self.arrays.items, managed)) return;
+                if (managed.marked) return;
+                managed.marked = true;
                 for (array_obj.elements) |elem| {
                     self.markObject(elem);
                 }
             },
             .hash => |hash_obj| {
-                if (!isInList(*Object.Hash, self.hashes.items, hash_obj)) return;
-                if (hash_obj.marked) return;
-                hash_obj.marked = true;
+                const managed = gcMeta(Object.Hash, hash_obj);
+                if (!isInList(*GcManaged(Object.Hash), self.hashes.items, managed)) return;
+                if (managed.marked) return;
+                managed.marked = true;
                 var iterator = hash_obj.pairs.iterator();
                 while (iterator.next()) |entry| {
                     self.markObject(entry.value_ptr.key);
@@ -260,10 +307,10 @@ pub const Gc = struct {
 
     fn sweep(self: *Self) void {
         self.adjustSurvivingRefCounts();
-        self.sweepList(*Object.String, &self.strings, sweepFreeString);
-        self.sweepList(*Object.Function, &self.functions, sweepFreeFunction);
-        self.sweepList(*Object.Array, &self.arrays, sweepFreeArray);
-        self.sweepList(*Object.Hash, &self.hashes, sweepFreeHash);
+        self.sweepList(*GcManaged(Object.String), &self.strings, sweepFreeString);
+        self.sweepList(*GcManaged(Object.Function), &self.functions, sweepFreeFunction);
+        self.sweepList(*GcManaged(Object.Array), &self.arrays, sweepFreeArray);
+        self.sweepList(*GcManaged(Object.Hash), &self.hashes, sweepFreeHash);
         self.sweepList(*Environment, &self.environments, sweepFreeEnvironment);
     }
 
@@ -271,40 +318,26 @@ pub const Gc = struct {
     /// outgoing references. This keeps surviving objects' ref_counts accurate after
     /// the dying objects are freed without RC cascading.
     fn adjustSurvivingRefCounts(self: *Self) void {
-        for (self.functions.items) |function_obj| {
-            if (!function_obj.marked) {
-                const captured_env = function_obj.environment;
+        for (self.functions.items) |managed| {
+            if (!managed.marked) {
+                const captured_env = managed.data.environment;
                 if (captured_env.marked) {
                     captured_env.ref_count -|= 1;
                 }
             }
         }
 
-        for (self.arrays.items) |array_obj| {
-            if (!array_obj.marked) {
-                for (array_obj.elements) |elem| {
-                    switch (elem) {
-                        .string => |s| if (s.marked) {
-                            s.ref_count -|= 1;
-                        },
-                        .function => |f| if (f.marked) {
-                            f.ref_count -|= 1;
-                        },
-                        .array => |a| if (a.marked) {
-                            a.ref_count -|= 1;
-                        },
-                        .hash => |h| if (h.marked) {
-                            h.ref_count -|= 1;
-                        },
-                        else => {},
-                    }
+        for (self.arrays.items) |managed| {
+            if (!managed.marked) {
+                for (managed.data.elements) |elem| {
+                    self.adjustRefForDying(elem);
                 }
             }
         }
 
-        for (self.hashes.items) |hash_obj| {
-            if (!hash_obj.marked) {
-                var iterator = hash_obj.pairs.iterator();
+        for (self.hashes.items) |managed| {
+            if (!managed.marked) {
+                var iterator = managed.data.pairs.iterator();
                 while (iterator.next()) |entry| {
                     self.adjustRefForDying(entry.value_ptr.key);
                     self.adjustRefForDying(entry.value_ptr.value);
@@ -316,21 +349,7 @@ pub const Gc = struct {
             if (!env.marked) {
                 var iterator = env.storage.iterator();
                 while (iterator.next()) |entry| {
-                    switch (entry.value_ptr.*) {
-                        .function => |f| if (f.marked) {
-                            f.ref_count -|= 1;
-                        },
-                        .string => |s| if (s.marked) {
-                            s.ref_count -|= 1;
-                        },
-                        .array => |a| if (a.marked) {
-                            a.ref_count -|= 1;
-                        },
-                        .hash => |h| if (h.marked) {
-                            h.ref_count -|= 1;
-                        },
-                        else => {},
-                    }
+                    self.adjustRefForDying(entry.value_ptr.*);
                 }
                 if (env.outer) |outer| {
                     if (outer.marked) {
@@ -355,24 +374,24 @@ pub const Gc = struct {
         }
     }
 
-    fn sweepFreeString(self: *Self, string_obj: *Object.String) void {
-        self.allocator.free(string_obj.value);
-        self.allocator.destroy(string_obj);
+    fn sweepFreeString(self: *Self, managed: *GcManaged(Object.String)) void {
+        self.allocator.free(managed.data.value);
+        self.allocator.destroy(managed);
     }
 
-    fn sweepFreeFunction(self: *Self, function_obj: *Object.Function) void {
-        function_obj.deinit();
-        self.allocator.destroy(function_obj);
+    fn sweepFreeFunction(self: *Self, managed: *GcManaged(Object.Function)) void {
+        managed.data.deinit();
+        self.allocator.destroy(managed);
     }
 
-    fn sweepFreeArray(self: *Self, array_obj: *Object.Array) void {
-        self.allocator.free(array_obj.elements);
-        self.allocator.destroy(array_obj);
+    fn sweepFreeArray(self: *Self, managed: *GcManaged(Object.Array)) void {
+        self.allocator.free(managed.data.elements);
+        self.allocator.destroy(managed);
     }
 
-    fn sweepFreeHash(self: *Self, hash_obj: *Object.Hash) void {
-        hash_obj.pairs.deinit();
-        self.allocator.destroy(hash_obj);
+    fn sweepFreeHash(self: *Self, managed: *GcManaged(Object.Hash)) void {
+        managed.data.pairs.deinit();
+        self.allocator.destroy(managed);
     }
 
     fn sweepFreeEnvironment(self: *Self, env: *Environment) void {
@@ -407,17 +426,21 @@ pub const Gc = struct {
     fn adjustRefForDying(self: *Self, obj: Object) void {
         _ = self;
         switch (obj) {
-            .string => |s| if (s.marked) {
-                s.ref_count -|= 1;
+            .string => |s| {
+                const m = gcMeta(Object.String, s);
+                if (m.marked) m.ref_count -|= 1;
             },
-            .function => |f| if (f.marked) {
-                f.ref_count -|= 1;
+            .function => |f| {
+                const m = gcMeta(Object.Function, f);
+                if (m.marked) m.ref_count -|= 1;
             },
-            .array => |a| if (a.marked) {
-                a.ref_count -|= 1;
+            .array => |a| {
+                const m = gcMeta(Object.Array, a);
+                if (m.marked) m.ref_count -|= 1;
             },
-            .hash => |h| if (h.marked) {
-                h.ref_count -|= 1;
+            .hash => |h| {
+                const m = gcMeta(Object.Hash, h);
+                if (m.marked) m.ref_count -|= 1;
             },
             else => {},
         }

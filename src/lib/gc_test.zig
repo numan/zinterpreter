@@ -272,13 +272,13 @@ test "cycle has positive ref_counts but mark-and-sweep still collects it" {
     _ = try collector.envSet(cycle_env, "self", closure);
 
     // Both have ref_count > 0 despite being unreachable from root
-    try testing.expect(closure.function.ref_count > 0);
+    try testing.expect(collector.refCount(closure) > 0);
     try testing.expect(cycle_env.ref_count > 0);
 
     // Also create a non-cyclic unreachable string for contrast
     const orphan = try collector.allocString("orphan");
     // orphan has ref_count 0 — no environment references it
-    try testing.expectEqual(0, orphan.string.ref_count);
+    try testing.expectEqual(0, collector.refCount(orphan));
 
     // Mark-and-sweep collects both the cycle and the orphan
     collector.collect(global);

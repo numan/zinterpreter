@@ -53,14 +53,9 @@ pub const Object = union(enum) {
 
     pub const String = struct {
         value: []const u8,
-        marked: bool = false,
-        ref_count: usize = 0,
 
         pub fn init(value: []const u8) String {
-            return String{
-                .value = value,
-                .marked = false,
-            };
+            return .{ .value = value };
         }
 
         pub fn hashKey(self: *const String) HashKey {
@@ -162,8 +157,6 @@ pub const Object = union(enum) {
         parameters: []const ast.Identifier,
         body: *const ast.StatementType.BlockStatement,
         environment: *environment.Environment,
-        marked: bool = false,
-        ref_count: usize = 0,
         arena: std.heap.ArenaAllocator,
 
         pub fn init(
@@ -176,7 +169,6 @@ pub const Object = union(enum) {
                 .parameters = parameters,
                 .body = body,
                 .environment = env,
-                .marked = false,
                 .arena = arena,
             };
         }
@@ -203,13 +195,9 @@ pub const Object = union(enum) {
 
     pub const Array = struct {
         elements: []Object,
-        marked: bool = false,
-        ref_count: usize = 0,
 
         pub fn init(elements: []Object) Array {
-            return .{
-                .elements = elements,
-            };
+            return .{ .elements = elements };
         }
 
         pub fn inspect(self: *const Object.Array, writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -230,8 +218,6 @@ pub const Object = union(enum) {
 
     pub const Hash = struct {
         pairs: std.AutoHashMap(HashKey, HashPair),
-        marked: bool = false,
-        ref_count: usize = 0,
 
         pub fn inspect(self: *const Object.Hash, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             try writer.writeAll("{");

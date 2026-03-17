@@ -364,12 +364,15 @@ pub const Evaluator = struct {
                 return unwrapEvalResult(evaluated);
             },
             .builtin => |builtin| {
-                const result = switch (builtin) {
+                var result = switch (builtin) {
                     .function => |f| try f(self.gc.allocator, args),
                     .writer_function => |f| try f(self.gc.allocator, args, self.writer),
                 };
                 switch (result) {
-                    .array => |arr| try self.gc.arrays.append(self.gc.allocator, arr),
+                    .array => |arr| {
+                        const tracked = try self.gc.trackArray(arr);
+                        result = .{ .array = tracked };
+                    },
                     .err => |err| {
                         self.freeLastError();
                         self.last_error = err;
