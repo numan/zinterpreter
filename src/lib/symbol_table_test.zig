@@ -130,6 +130,111 @@ test "resolve nested local" {
     }
 }
 
+test "resolve free" {
+    var global = SymbolTable.init(testing.allocator);
+    defer global.deinit();
+    _ = try global.define("a");
+    _ = try global.define("b");
+
+    var first_local = SymbolTable.initEnclosed(testing.allocator, &global);
+    defer first_local.deinit();
+    _ = try first_local.define("c");
+    _ = try first_local.define("d");
+
+    var second_local = SymbolTable.initEnclosed(testing.allocator, &first_local);
+    defer second_local.deinit();
+    _ = try second_local.define("e");
+    _ = try second_local.define("f");
+
+    // first_local: globals resolve as global, locals resolve as local, no free symbols
+    const first_expected = [_]Symbol{
+        .{ .name = "a", .scope = .global, .index = 0 },
+        .{ .name = "b", .scope = .global, .index = 1 },
+        .{ .name = "c", .scope = .local, .index = 0 },
+        .{ .name = "d", .scope = .local, .index = 1 },
+    };
+
+    for (first_expected) |sym| {
+        const result = first_local.resolve(sym.name) orelse {
+            std.debug.print("name {s} not resolvable in first_local\n", .{sym.name});
+            return error.TestUnexpectedResult;
+        };
+        try expectSymbolEqual(sym, result);
+    }
+
+    try testing.expectEqual(@as(usize, 0), first_local.free_symbols.items.len);
+
+    // second_local: globals resolve as global, first_local's locals resolve as free, own locals resolve as local
+    const second_expected = [_]Symbol{
+        .{ .name = "a", .scope = .global, .index = 0 },
+        .{ .name = "b", .scope = .global, .index = 1 },
+        .{ .name = "c", .scope = .free, .index = 0 },
+        .{ .name = "d", .scope = .free, .index = 1 },
+        .{ .name = "e", .scope = .local, .index = 0 },
+        .{ .name = "f", .scope = .local, .index = 1 },
+    };
+
+    for (second_expected) |sym| {
+        const result = second_local.resolve(sym.name) orelse {
+            std.debug.print("name {s} not resolvable in second_local\n", .{sym.name});
+            return error.TestUnexpectedResult;
+        };
+        try expectSymbolEqual(sym, result);
+    }
+
+    const expected_free = [_]Symbol{
+        .{ .name = "c", .scope = .local, .index = 0 },
+        .{ .name = "d", .scope = .local, .index = 1 },
+    };
+
+    try testing.expectEqual(expected_free.len, second_local.free_symbols.items.len);
+
+    for (expected_free, 0..) |sym, i| {
+        const result = second_local.free_symbols.items[i];
+        try expectSymbolEqual(sym, result);
+    }
+}
+
+test "resolve unresolvable free" {
+    var global = SymbolTable.init(testing.allocator);
+    defer global.deinit();
+    _ = try global.define("a");
+
+    var first_local = SymbolTable.initEnclosed(testing.allocator, &global);
+    defer first_local.deinit();
+    _ = try first_local.define("c");
+
+    var second_local = SymbolTable.initEnclosed(testing.allocator, &first_local);
+    defer second_local.deinit();
+    _ = try second_local.define("e");
+    _ = try second_local.define("f");
+
+    const expected = [_]Symbol{
+        .{ .name = "a", .scope = .global, .index = 0 },
+        .{ .name = "c", .scope = .free, .index = 0 },
+        .{ .name = "e", .scope = .local, .index = 0 },
+        .{ .name = "f", .scope = .local, .index = 1 },
+    };
+
+    for (expected) |sym| {
+        const result = second_local.resolve(sym.name) orelse {
+            std.debug.print("name {s} not resolvable\n", .{sym.name});
+            return error.TestUnexpectedResult;
+        };
+        try expectSymbolEqual(sym, result);
+    }
+
+    const expected_unresolvable = [_][]const u8{ "b", "d" };
+
+    for (expected_unresolvable) |name| {
+        const result = second_local.resolve(name);
+        if (result != null) {
+            std.debug.print("name {s} resolved, but was expected not to\n", .{name});
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
 test "resolve unknown" {
     var global = SymbolTable.init(testing.allocator);
     defer global.deinit();

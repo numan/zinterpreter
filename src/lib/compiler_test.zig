@@ -1008,3 +1008,191 @@ test "function calls" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+test "closures" {
+    const allocator = testing.allocator;
+
+    const op_get_free_0 = try code.make(allocator, .get_free, &.{0});
+    defer allocator.free(op_get_free_0);
+    const op_get_free_1 = try code.make(allocator, .get_free, &.{1});
+    defer allocator.free(op_get_free_1);
+    const op_get_local_0 = try code.make(allocator, .get_local, &.{0});
+    defer allocator.free(op_get_local_0);
+    const op_add = try code.make(allocator, .add, &.{});
+    defer allocator.free(op_add);
+    const op_return_value = try code.make(allocator, .return_value, &.{});
+    defer allocator.free(op_return_value);
+    const op_closure_0_1 = try code.make(allocator, .closure, &.{ 0, 1 });
+    defer allocator.free(op_closure_0_1);
+    const op_closure_0_2 = try code.make(allocator, .closure, &.{ 0, 2 });
+    defer allocator.free(op_closure_0_2);
+    const op_closure_1_0 = try code.make(allocator, .closure, &.{ 1, 0 });
+    defer allocator.free(op_closure_1_0);
+    const op_closure_1_1 = try code.make(allocator, .closure, &.{ 1, 1 });
+    defer allocator.free(op_closure_1_1);
+    const op_closure_2_0 = try code.make(allocator, .closure, &.{ 2, 0 });
+    defer allocator.free(op_closure_2_0);
+    const op_closure_4_2 = try code.make(allocator, .closure, &.{ 4, 2 });
+    defer allocator.free(op_closure_4_2);
+    const op_closure_5_1 = try code.make(allocator, .closure, &.{ 5, 1 });
+    defer allocator.free(op_closure_5_1);
+    const op_closure_6_0 = try code.make(allocator, .closure, &.{ 6, 0 });
+    defer allocator.free(op_closure_6_0);
+    const op_constant_0 = try code.make(allocator, .constant, &.{0});
+    defer allocator.free(op_constant_0);
+    const op_constant_1 = try code.make(allocator, .constant, &.{1});
+    defer allocator.free(op_constant_1);
+    const op_constant_2 = try code.make(allocator, .constant, &.{2});
+    defer allocator.free(op_constant_2);
+    const op_constant_3 = try code.make(allocator, .constant, &.{3});
+    defer allocator.free(op_constant_3);
+    const op_set_local_0 = try code.make(allocator, .set_local, &.{0});
+    defer allocator.free(op_set_local_0);
+    const op_get_global_0 = try code.make(allocator, .get_global, &.{0});
+    defer allocator.free(op_get_global_0);
+    const op_set_global_0 = try code.make(allocator, .set_global, &.{0});
+    defer allocator.free(op_set_global_0);
+    const op_pop = try code.make(allocator, .pop, &.{});
+    defer allocator.free(op_pop);
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input =
+            \\fn(a) {
+            \\    fn(b) {
+            \\        a + b
+            \\    }
+            \\}
+            ,
+            .expected_constants = &.{
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_free_0,
+                        op_get_local_0,
+                        op_add,
+                        op_return_value,
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_local_0,
+                        op_closure_0_1,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_closure_1_0,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+            \\fn(a) {
+            \\    fn(b) {
+            \\        fn(c) {
+            \\            a + b + c
+            \\        }
+            \\    }
+            \\}
+            ,
+            .expected_constants = &.{
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_free_0,
+                        op_get_free_1,
+                        op_add,
+                        op_get_local_0,
+                        op_add,
+                        op_return_value,
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_free_0,
+                        op_get_local_0,
+                        op_closure_0_2,
+                        op_return_value,
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_get_local_0,
+                        op_closure_1_1,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_closure_2_0,
+                op_pop,
+            },
+        },
+        .{
+            .input =
+            \\let global = 55;
+            \\
+            \\fn() {
+            \\    let a = 66;
+            \\
+            \\    fn() {
+            \\        let b = 77;
+            \\
+            \\        fn() {
+            \\            let c = 88;
+            \\
+            \\            global + a + b + c;
+            \\        }
+            \\    }
+            \\}
+            ,
+            .expected_constants = &.{
+                .{ .int = 55 },
+                .{ .int = 66 },
+                .{ .int = 77 },
+                .{ .int = 88 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_3,
+                        op_set_local_0,
+                        op_get_global_0,
+                        op_get_free_0,
+                        op_add,
+                        op_get_free_1,
+                        op_add,
+                        op_get_local_0,
+                        op_add,
+                        op_return_value,
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_2,
+                        op_set_local_0,
+                        op_get_free_0,
+                        op_get_local_0,
+                        op_closure_4_2,
+                        op_return_value,
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        op_constant_1,
+                        op_set_local_0,
+                        op_get_local_0,
+                        op_closure_5_1,
+                        op_return_value,
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_set_global_0,
+                op_closure_6_0,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}

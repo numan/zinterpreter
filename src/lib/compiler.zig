@@ -155,12 +155,7 @@ pub const Compiler = struct {
             .if_expression => |*val| self.compileIfExpression(val),
             .identifier => |*ident| {
                 const sym = self.symbol_table.resolve(ident.value) orelse return Error.UndefinedVariable;
-                const op: code.Opcode = switch (sym.scope) {
-                    .global => .get_global,
-                    .local => .get_local,
-                    .builtin => .get_builtin,
-                };
-                _ = try self.emit(op, &.{sym.index});
+                try self.loadSymbol(sym);
             },
             .index_expression => |*idx| {
                 try self.compile(&idx.left.expression);
@@ -173,14 +168,6 @@ pub const Compiler = struct {
             .call_expression => |*val| self.compileCallExpression(val),
             else => Error.UnsupportedNodeType,
         };
-    }
-
-    fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {
-        try self.compile(call_expression.function);
-        for (call_expression.arguments) |*arg| {
-            try self.compile(arg);
-        }
-        _ = try self.emit(.call, &.{call_expression.arguments.len});
     }
 
     fn compileArrayLiteral(self: *Self, array_literal: *const ExpressionType.ArrayLiteral) !void {
@@ -297,8 +284,14 @@ pub const Compiler = struct {
             _ = try self.emit(.op_return, &.{});
         }
 
+        const free_symbols = self.symbol_table.*.free_symbols.items;
+
         const result = self.leaveScope();
         const instructions = result.instructions orelse return Error.OperationNotSupported;
+
+        for (free_symbols) |free_symbol| {
+            try self.loadSymbol(free_symbol);
+        }
 
         const compiled_fn = try self.allocator().create(Object.CompiledFunction);
         compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals, fn_lit.parameters.len);
@@ -306,8 +299,26 @@ pub const Compiler = struct {
             try self.addConstant(.{
                 .compiled_function = compiled_fn,
             }),
-            0,
+            free_symbols.len,
         });
+    }
+
+    inline fn loadSymbol(self: *Self, symbol: symbol_table.Symbol) !void {
+        const op: code.Opcode = switch (symbol.scope) {
+            .global => .get_global,
+            .local => .get_local,
+            .builtin => .get_builtin,
+            .free => .get_free,
+        };
+        _ = try self.emit(op, &.{symbol.index});
+    }
+
+    fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {
+        try self.compile(call_expression.function);
+        for (call_expression.arguments) |*arg| {
+            try self.compile(arg);
+        }
+        _ = try self.emit(.call, &.{call_expression.arguments.len});
     }
 
     pub fn bytecode(self: *Self) Bytecode {

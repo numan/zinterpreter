@@ -178,6 +178,12 @@ pub const Vm = struct {
                     self.currentFrame().ip += 1;
                     try self.push(self.stack[self.currentFrame().base_pointer + local_index]);
                 },
+                .get_free => {
+                    const free_index = ins[ip + 1];
+                    self.currentFrame().ip += 1;
+                    const closure = self.currentFrame().closure;
+                    try self.push(closure.free_vars[free_index]);
+                },
                 .pop => {
                     _ = try self.pop();
                 },
@@ -190,12 +196,22 @@ pub const Vm = struct {
                 .closure => {
                     const const_index = code.readUint16(ins[ip + 1 ..]);
                     self.currentFrame().ip += 2;
-                    _ = ins[ip + 3]; // num_free (always 0 for now)
+                    const num_free = code.readUint8(ins[ip + 3 ..]);
                     self.currentFrame().ip += 1;
+
+                    var free_list = try std.ArrayList(Object).initCapacity(self.allocator, num_free);
+
+                    for (0..num_free) |idx| {
+                        try free_list.append(self.allocator, self.stack[self.sp - num_free + idx]);
+                    }
+                    self.sp -= num_free;
 
                     const compiled_fn = self.constants[const_index].compiled_function;
                     const closure = try self.allocator.create(Object.Closure);
-                    closure.* = Object.Closure.init(compiled_fn, &.{});
+                    closure.* = Object.Closure.init(
+                        compiled_fn,
+                        try free_list.toOwnedSlice(self.allocator),
+                    );
                     try self.push(.{ .closure = closure });
                 },
                 .call => {
