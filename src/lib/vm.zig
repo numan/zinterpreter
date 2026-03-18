@@ -18,8 +18,6 @@ pub const globals_size = 65536;
 const max_frames = 1024;
 
 const Errors = error{
-    StackOverflow,
-    StackUnderflow,
     TypeMismatch,
     HashNotHashable,
     UncallableObject,
@@ -82,113 +80,129 @@ pub const Vm = struct {
     }
 
     pub fn run(self: *Vm) !void {
-        while (self.currentFrame().ip < self.currentFrame().instructions().len) {
-            const op: code.Opcode = @enumFromInt(self.readOperand(u8));
+        var ip = self.currentFrame().ip;
+        var ins = self.currentFrame().ins;
+        var base_pointer = self.currentFrame().base_pointer;
+
+        while (ip < ins.len) {
+            const op: code.Opcode = @enumFromInt(ins[ip]);
+            ip += 1;
             switch (op) {
                 .constant => {
-                    const const_index = self.readOperand(u16);
-                    try self.push(self.constants[const_index]);
+                    const const_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    self.push(self.constants[const_index]);
                 },
                 .add, .sub, .mul, .div => {
-                    const right = try self.pop();
-                    const left = try self.pop();
+                    const right = self.pop();
+                    const left = self.pop();
                     try self.executeBinaryOp(op, left, right);
                 },
                 .op_true => {
-                    try self.push(True);
+                    self.push(True);
                 },
                 .op_false => {
-                    try self.push(False);
+                    self.push(False);
                 },
                 .equal, .not_equal, .greater_than => {
-                    const right = try self.pop();
-                    const left = try self.pop();
+                    const right = self.pop();
+                    const left = self.pop();
                     try self.executeComparison(op, left, right);
                 },
                 .jump => {
-                    const pos = self.readOperand(u16);
-                    self.currentFrame().ip = pos;
+                    ip = std.mem.readInt(u16, ins[ip..][0..2], .big);
                 },
                 .jump_not_truthy => {
-                    const pos = self.readOperand(u16);
-                    const condition = try self.pop();
+                    const pos = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    const condition = self.pop();
                     if (!isTruthy(condition)) {
-                        self.currentFrame().ip = pos;
+                        ip = pos;
                     }
                 },
                 .array => {
-                    const len = self.readOperand(u16);
+                    const len = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
                     const array = try self.buildArray(self.sp - len, self.sp);
                     self.sp -= len;
-                    try self.push(.{ .array = array });
+                    self.push(.{ .array = array });
                 },
                 .hash => {
-                    const num_elements = self.readOperand(u16);
+                    const num_elements = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
                     const hash = try self.buildHash(self.sp - num_elements, self.sp);
                     self.sp -= num_elements;
-                    try self.push(.{ .hash = hash });
+                    self.push(.{ .hash = hash });
                 },
                 .index => {
-                    const index_val = try self.pop();
-                    const left = try self.pop();
+                    const index_val = self.pop();
+                    const left = self.pop();
                     try self.executeIndexExpression(left, index_val);
                 },
                 .op_null => {
-                    try self.push(Null);
+                    self.push(Null);
                 },
                 .minus => {
-                    const operand = try self.pop();
+                    const operand = self.pop();
                     const int_val = switch (operand) {
                         .int => |v| v.value,
                         else => return Errors.TypeMismatch,
                     };
-                    try self.push(.{ .int = Object.Integer.init(-int_val) });
+                    self.push(.{ .int = Object.Integer.init(-int_val) });
                 },
                 .bang => {
-                    const operand = try self.pop();
+                    const operand = self.pop();
                     const result = switch (operand) {
                         .bool => |b| if (b.value) False else True,
                         .null => True,
                         else => False,
                     };
-                    try self.push(result);
+                    self.push(result);
                 },
                 .set_global => {
-                    const global_index = self.readOperand(u16);
-                    self.globals[global_index] = try self.pop();
+                    const global_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    self.globals[global_index] = self.pop();
                 },
                 .get_global => {
-                    const global_index = self.readOperand(u16);
-                    try self.push(self.globals[global_index]);
+                    const global_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    self.push(self.globals[global_index]);
                 },
                 .set_local => {
-                    const local_index = self.readOperand(u8);
-                    self.stack[self.currentFrame().base_pointer + local_index] = try self.pop();
+                    const local_index = ins[ip];
+                    ip += 1;
+                    self.stack[base_pointer + local_index] = self.pop();
                 },
                 .get_local => {
-                    const local_index = self.readOperand(u8);
-                    try self.push(self.stack[self.currentFrame().base_pointer + local_index]);
+                    const local_index = ins[ip];
+                    ip += 1;
+                    self.push(self.stack[base_pointer + local_index]);
                 },
                 .get_free => {
-                    const free_index = self.readOperand(u8);
+                    const free_index = ins[ip];
+                    ip += 1;
                     const closure = self.currentFrame().closure;
-                    try self.push(closure.free_vars[free_index]);
+                    self.push(closure.free_vars[free_index]);
                 },
                 .pop => {
-                    _ = try self.pop();
+                    _ = self.pop();
                 },
                 .get_builtin => {
-                    const builtin_index = self.readOperand(u8);
+                    const builtin_index = ins[ip];
+                    ip += 1;
                     const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
-                    try self.push(builtins_mod.getObject(b));
+                    self.push(builtins_mod.getObject(b));
                 },
                 .current_closure => {
                     const current_closure = self.currentFrame().closure;
-                    try self.push(.{ .closure = current_closure });
+                    self.push(.{ .closure = current_closure });
                 },
                 .closure => {
-                    const const_index = self.readOperand(u16);
-                    const num_free = self.readOperand(u8);
+                    const const_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    const num_free = ins[ip];
+                    ip += 1;
 
                     const free_vars = try self.allocator.dupe(Object, self.stack[self.sp - num_free .. self.sp]);
                     self.sp -= num_free;
@@ -196,10 +210,11 @@ pub const Vm = struct {
                     const compiled_fn = self.constants[const_index].compiled_function;
                     const closure = try self.allocator.create(Object.Closure);
                     closure.* = Object.Closure.init(compiled_fn, free_vars);
-                    try self.push(.{ .closure = closure });
+                    self.push(.{ .closure = closure });
                 },
                 .call => {
-                    const num_args = self.readOperand(u8);
+                    const num_args = ins[ip];
+                    ip += 1;
 
                     const top_obj = self.stack[self.sp - 1 - num_args];
                     switch (top_obj) {
@@ -207,9 +222,15 @@ pub const Vm = struct {
                             if (num_args != closure.function.*.num_parameters) {
                                 return error.WrongArgumentCount;
                             }
+                            // Save ip back to current frame before switching
+                            self.currentFrame().ip = ip;
                             const fn_frame = Frame.init(closure, self.sp - num_args);
                             self.sp = fn_frame.base_pointer + closure.function.*.num_locals;
                             self.pushFrame(fn_frame);
+                            // Reload locals from new frame
+                            ip = fn_frame.ip;
+                            ins = fn_frame.ins;
+                            base_pointer = fn_frame.base_pointer;
                         },
                         .builtin => |builtin| {
                             const args = self.stack[self.sp - num_args .. self.sp];
@@ -218,21 +239,31 @@ pub const Vm = struct {
                                 .writer_function => |func| try func(self.allocator, args, self.writer),
                             };
                             self.sp = self.sp - num_args - 1;
-                            try self.push(result);
+                            self.push(result);
                         },
                         else => return error.UncallableObject,
                     }
                 },
                 .return_value => {
-                    const return_val = try self.pop();
+                    const return_val = self.pop();
                     const f = self.popFrame();
                     self.sp = f.base_pointer - 1;
-                    try self.push(return_val);
+                    self.push(return_val);
+                    // Reload locals from the restored frame
+                    const current = self.currentFrame();
+                    ip = current.ip;
+                    ins = current.ins;
+                    base_pointer = current.base_pointer;
                 },
                 .op_return => {
                     const f = self.popFrame();
                     self.sp = f.base_pointer - 1;
-                    try self.push(Null);
+                    self.push(Null);
+                    // Reload locals from the restored frame
+                    const current = self.currentFrame();
+                    ip = current.ip;
+                    ins = current.ins;
+                    base_pointer = current.base_pointer;
                 },
             }
         }
@@ -249,7 +280,7 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
-        try self.push(nativeBoolToBooleanObject(result));
+        self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeIntegerComparison(self: *Vm, op: code.Opcode, left: i64, right: i64) !void {
@@ -260,7 +291,7 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
-        try self.push(nativeBoolToBooleanObject(result));
+        self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeBinaryOp(self: *Vm, op: code.Opcode, left: Object, right: Object) !void {
@@ -281,14 +312,14 @@ pub const Vm = struct {
             .div => @divTrunc(left, right),
             else => unreachable,
         };
-        try self.push(.{ .int = Object.Integer.init(result) });
+        self.push(.{ .int = Object.Integer.init(result) });
     }
 
     fn executeStringConcatenation(self: *Vm, left: []const u8, right: []const u8) !void {
         const concat = try std.mem.concat(self.allocator, u8, &.{ left, right });
         const str = try self.allocator.create(Object.String);
         str.* = Object.String.init(concat);
-        try self.push(.{ .string = str });
+        self.push(.{ .string = str });
     }
 
     fn buildArray(self: *Vm, start_index: usize, end_index: usize) !*Object.Array {
@@ -326,7 +357,8 @@ pub const Vm = struct {
 
     fn executeIndexExpression(self: *Vm, left: Object, index_val: Object) !void {
         if (left == .array and index_val == .int) {
-            return self.executeArrayIndex(left.array, index_val.int.value);
+            self.executeArrayIndex(left.array, index_val.int.value);
+            return;
         }
         if (left == .hash) {
             return self.executeHashIndex(left.hash, index_val);
@@ -334,7 +366,7 @@ pub const Vm = struct {
         return Errors.TypeMismatch;
     }
 
-    fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) !void {
+    fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) void {
         if (index < 0 or index >= @as(i64, @intCast(array.elements.len))) {
             return self.push(Null);
         }
@@ -345,29 +377,18 @@ pub const Vm = struct {
         const hash_key = index_val.hashKey() orelse return Errors.HashNotHashable;
         const pair = hash.pairs.get(hash_key);
         if (pair) |p| {
-            return self.push(p.value);
+            self.push(p.value);
+        } else {
+            self.push(Null);
         }
-        return self.push(Null);
     }
 
-    fn readOperand(self: *Vm, comptime T: type) T {
-        const f = self.currentFrame();
-        const ins = f.instructions();
-        const width = @sizeOf(T);
-        const result = std.mem.readInt(T, ins[f.ip..][0..width], .big);
-        f.ip += width;
-        return result;
-    }
-
-    fn pop(self: *Vm) !Object {
-        if (self.sp == 0) return Errors.StackUnderflow;
-        const obj = self.stack[self.sp - 1];
+    inline fn pop(self: *Vm) Object {
         self.sp -= 1;
-        return obj;
+        return self.stack[self.sp];
     }
 
-    fn push(self: *Vm, obj: Object) !void {
-        if (self.sp >= stack_size) return Errors.StackOverflow;
+    inline fn push(self: *Vm, obj: Object) void {
         self.stack[self.sp] = obj;
         self.sp += 1;
     }
