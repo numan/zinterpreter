@@ -24,7 +24,7 @@ pub const Lexer = struct {
         return lexer;
     }
 
-    fn readCharacter(self: *Self) void {
+    inline fn readCharacter(self: *Self) void {
         if (self.read_position >= self.input.len) {
             self.ch = null;
         } else {
@@ -33,6 +33,11 @@ pub const Lexer = struct {
 
         self.position = self.read_position;
         self.read_position += 1;
+    }
+
+    inline fn currentCharacterAsSlice(self: *const Self) ?[]const u8 {
+        if (self.ch == null) return null;
+        return self.input[self.position .. self.position + 1];
     }
 
     fn readIdentifier(self: *Self) ![]const u8 {
@@ -47,16 +52,26 @@ pub const Lexer = struct {
         return self.input[start..self.position];
     }
 
-    fn readNumber(self: *Self) ![]const u8 {
+    fn readNumber(self: *Self) !Token {
         const start = self.position;
 
         if (self.ch == null) return error.UnexpectedCharacter;
 
-        while (Lexer.isDigit(self.ch.?)) {
+        while (self.ch != null and Lexer.isDigit(self.ch.?)) {
             self.readCharacter();
-            if (self.ch == null) return self.input[start..self.position];
         }
-        return self.input[start..self.position];
+
+        // Read a float
+        if (self.ch) |next_character| {
+            if (Lexer.isDecimal(next_character)) {
+                self.readCharacter();
+                while (self.ch != null and Lexer.isDigit(self.ch.?)) {
+                    self.readCharacter();
+                }
+                return .init(.float, self.input[start..self.position]);
+            }
+        }
+        return .init(.int, self.input[start..self.position]);
     }
 
     fn skipWhitespace(self: *Self) void {
@@ -73,6 +88,12 @@ pub const Lexer = struct {
         return self.input[self.read_position];
     }
 
+    fn isDecimal(ch: u8) bool {
+        return switch (ch) {
+            '.' => true,
+            else => false,
+        };
+    }
     fn isWhitespace(ch: u8) bool {
         return std.ascii.isWhitespace(ch);
     }
@@ -132,8 +153,7 @@ pub const Lexer = struct {
                 return Token.init(TokenType.iden, nextTokenSlice);
             }
         } else if (Lexer.isDigit(ch)) {
-            const nextTokenSlice = self.readNumber() catch @panic("Encountered an unexpected error while trying to read a number");
-            return Token.init(TokenType.int, nextTokenSlice);
+            return self.readNumber() catch @panic("Encountered an unexpected error while trying to read a number");
         } else {
             // Handle two-character operators
             if (ch == '=' or ch == '!') {
@@ -180,6 +200,9 @@ test "read tokens" {
         \\ "foobar"
         \\ [1, 2]
         \\ {"foo": "bar"}
+        \\12;
+        \\10.;
+        \\10.3;
     ;
 
     const tests = [_]struct { TokenType, []const u8 }{
@@ -268,6 +291,12 @@ test "read tokens" {
         .{ TokenType.colon, ":" },
         .{ TokenType.string, "bar" },
         .{ TokenType.rbrace, "}" },
+        .{ .int, "12" },
+        .{ .semicolon, ";" },
+        .{ .float, "10." },
+        .{ .semicolon, ";" },
+        .{ .float, "10.3" },
+        .{ .semicolon, ";" },
         .{ TokenType.eof, "eof" },
     };
 
