@@ -13,6 +13,7 @@ const Compiler = compiler.Compiler;
 
 const ExpectedConstant = union(enum) {
     int: i64,
+    float: f64,
     string: []const u8,
     instructions: []const code.Instructions,
 };
@@ -54,6 +55,7 @@ fn testConstants(allocator: std.mem.Allocator, expected: []const ExpectedConstan
     for (expected, 0..) |constant, i| {
         switch (constant) {
             .int => |exp| try testIntegerObject(exp, actual[i]),
+            .float => |exp| try testFloatObject(exp, actual[i]),
             .string => |exp| try testStringObject(exp, actual[i]),
             .instructions => |exp| {
                 const fn_obj = switch (actual[i]) {
@@ -64,6 +66,17 @@ fn testConstants(allocator: std.mem.Allocator, expected: []const ExpectedConstan
             },
         }
     }
+}
+
+fn testFloatObject(expected: f64, obj: Object) !void {
+    const float = switch (obj) {
+        .float => |value| value,
+        else => {
+            std.debug.print("object is not Float. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqual(expected, float.value);
 }
 
 fn testIntegerObject(expected: i64, obj: Object) !void {
@@ -1097,6 +1110,59 @@ test "closures" {
                 op_constant_0,
                 op_set_global_0,
                 op_closure_6_0,
+                op_pop,
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
+test "float arithmetic" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const op_constant_0 = makeOp(a, .constant, &.{0});
+    const op_constant_1 = makeOp(a, .constant, &.{1});
+    const op_add = makeOp(a, .add, &.{});
+    const op_pop = makeOp(a, .pop, &.{});
+    const op_minus = makeOp(a, .minus, &.{});
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "1.5",
+            .expected_constants = &.{.{ .float = 1.5 }},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_pop,
+            },
+        },
+        .{
+            .input = "10.",
+            .expected_constants = &.{.{ .float = 10.0 }},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_pop,
+            },
+        },
+        .{
+            .input = "1.5 + 2.5",
+            .expected_constants = &.{ .{ .float = 1.5 }, .{ .float = 2.5 } },
+            .expected_instructions = &.{
+                op_constant_0,
+                op_constant_1,
+                op_add,
+                op_pop,
+            },
+        },
+        .{
+            .input = "-1.5",
+            .expected_constants = &.{.{ .float = 1.5 }},
+            .expected_instructions = &.{
+                op_constant_0,
+                op_minus,
                 op_pop,
             },
         },

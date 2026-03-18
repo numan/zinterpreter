@@ -87,6 +87,7 @@ inline fn ExpNodeDelegator(impl_obj: anytype) type {
 pub const ExpressionType = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
+    float_literal: FloatLiteral,
     boolean_literal: BooleanLiteral,
     function_literal: FunctionLiteral,
     prefix_expression: PrefixExpression,
@@ -111,6 +112,10 @@ pub const ExpressionType = union(enum) {
         return switch (self.*) {
             .identifier => |ident| .{ .identifier = try ident.clone(allocator) },
             .integer_literal => |lit| .{ .integer_literal = .{
+                .token = try lit.token.clone(allocator),
+                .value = lit.value,
+            } },
+            .float_literal => |lit| .{ .float_literal = .{
                 .token = try lit.token.clone(allocator),
                 .value = lit.value,
             } },
@@ -251,6 +256,10 @@ pub const ExpressionType = union(enum) {
         return .{
             .integer_literal = IntegerLiteral.init(tkn, val),
         };
+    }
+
+    pub fn initFloatLiteral(tkn: Token, val: f64) ExpressionType {
+        return .{ .float_literal = FloatLiteral.init(tkn, val) };
     }
 
     pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) ExpressionType {
@@ -499,6 +508,25 @@ pub const ExpressionType = union(enum) {
                 .token = obj,
                 .value = val,
             };
+        }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write(self.tokenLiteral());
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
+
+    pub const FloatLiteral = struct {
+        const Self = @This();
+        token: Token,
+        value: f64,
+
+        pub fn init(obj: Token, val: f64) Self {
+            return .{ .token = obj, .value = val };
         }
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
@@ -808,6 +836,10 @@ pub const StatementType = union(enum) {
             return .{
                 .expression = ExpressionType.initIntegerLiteral(tkn, val),
             };
+        }
+
+        pub fn initFloatLiteralExpression(tkn: Token, val: f64) Self {
+            return .{ .expression = ExpressionType.initFloatLiteral(tkn, val) };
         }
 
         pub fn initPrefixExpression(tkn: Token, right: *StatementType.ExpressionStatement) Self {

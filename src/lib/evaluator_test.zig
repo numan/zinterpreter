@@ -30,6 +30,18 @@ fn testIntegerObjectEqual(obj: Object, expected: i64) !void {
     try testing.expectEqual(expected, integer.value);
 }
 
+fn testFloatObjectEqual(obj: Object, expected: f64) !void {
+    const float = switch (obj) {
+        .float => |value| value,
+        else => {
+            std.debug.print("Expected a float. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqual(expected, float.value);
+}
+
 fn testBooleanObjectEqual(obj: Object, expected: bool) !void {
     const boolean = switch (obj) {
         .bool => |value| value,
@@ -1648,6 +1660,107 @@ test "builtin error cases" {
         const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
         testErrorObjectMessageEqual(evaluated, case.expected_message) catch |err| {
             std.debug.print("Got wrong error for input: {s}\n", .{case.input});
+            return err;
+        };
+    }
+}
+
+test "eval float expression" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: f64,
+    }{
+        .{ .input = "3.14", .expected = 3.14 },
+        .{ .input = "10.", .expected = 10.0 },
+        .{ .input = "3.", .expected = 3.0 },
+        .{ .input = "-3.14", .expected = -3.14 },
+        .{ .input = "1.5 + 2.5", .expected = 4.0 },
+        .{ .input = "3.0 - 1.0", .expected = 2.0 },
+        .{ .input = "2.0 * 3.0", .expected = 6.0 },
+        .{ .input = "7.0 / 2.0", .expected = 3.5 },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testFloatObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print("Got wrong value for input {s}\n", .{case.input});
+            return err;
+        };
+    }
+}
+
+test "eval mixed int/float expression" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: f64,
+    }{
+        .{ .input = "1 + 2.5", .expected = 3.5 },
+        .{ .input = "3.14 * 2", .expected = 6.28 },
+        .{ .input = "10 - 1.5", .expected = 8.5 },
+        .{ .input = "7.0 / 2", .expected = 3.5 },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testFloatObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print("Got wrong value for input {s}\n", .{case.input});
+            return err;
+        };
+    }
+}
+
+test "eval float comparisons" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: bool,
+    }{
+        .{ .input = "1.5 < 2.5", .expected = true },
+        .{ .input = "2.5 < 1.5", .expected = false },
+        .{ .input = "3.0 == 3.0", .expected = true },
+        .{ .input = "1.0 != 2.0", .expected = true },
+        .{ .input = "1 < 2.5", .expected = true },
+    };
+
+    for (tests) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        testBooleanObjectEqual(evaluated, case.expected) catch |err| {
+            std.debug.print("Got wrong value for input {s}\n", .{case.input});
             return err;
         };
     }

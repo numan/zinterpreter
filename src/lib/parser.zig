@@ -194,6 +194,11 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 
+    fn parseFloatLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        const val = std.fmt.parseFloat(f64, parser.current_token.ch) catch return error.InvalidCharacter;
+        return ast.StatementType.ExpressionStatement.initFloatLiteralExpression(parser.current_token, val);
+    }
+
     fn parseBooleanLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
         const val = if (std.mem.eql(u8, parser.current_token.ch, "true")) true else false;
         return ast.StatementType.ExpressionStatement.initBooleanLiteralExpression(parser.current_token, val);
@@ -472,6 +477,7 @@ pub const Parser = struct {
         return switch (token_type) {
             .iden => Self.parseIdentifier,
             .int => Self.parseIntegerLiteral,
+            .float => Self.parseFloatLiteral,
             .lparen => Self.parseGroupedExpression,
             .@"if" => Self.parseIfExpression,
             .function => Self.parseFunctionLiteral,

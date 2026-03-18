@@ -144,11 +144,11 @@ pub const Vm = struct {
                 },
                 .minus => {
                     const operand = self.pop();
-                    const int_val = switch (operand) {
-                        .int => |v| v.value,
+                    switch (operand) {
+                        .int => |v| self.push(.{ .int = Object.Integer.init(-v.value) }),
+                        .float => |v| self.push(.{ .float = Object.Float.init(-v.value) }),
                         else => return Errors.TypeMismatch,
-                    };
-                    self.push(.{ .int = Object.Integer.init(-int_val) });
+                    }
                 },
                 .bang => {
                     const operand = self.pop();
@@ -273,6 +273,15 @@ pub const Vm = struct {
         if (left == .int and right == .int) {
             return self.executeIntegerComparison(op, left.int.value, right.int.value);
         }
+        if (left == .float and right == .float) {
+            return self.executeFloatComparison(op, left.float.value, right.float.value);
+        }
+        if (left == .int and right == .float) {
+            return self.executeFloatComparison(op, @floatFromInt(left.int.value), right.float.value);
+        }
+        if (left == .float and right == .int) {
+            return self.executeFloatComparison(op, left.float.value, @floatFromInt(right.int.value));
+        }
 
         const result = switch (op) {
             .equal => std.meta.eql(left, right),
@@ -280,6 +289,16 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
+        self.push(nativeBoolToBooleanObject(result));
+    }
+
+    fn executeFloatComparison(self: *Vm, op: code.Opcode, left: f64, right: f64) !void {
+        const result = switch (op) {
+            .equal => left == right,
+            .not_equal => left != right,
+            .greater_than => left > right,
+            else => return Errors.TypeMismatch,
+        };
         self.push(nativeBoolToBooleanObject(result));
     }
 
@@ -298,6 +317,15 @@ pub const Vm = struct {
         if (left == .int and right == .int) {
             return self.executeBinaryIntegerOp(op, left.int.value, right.int.value);
         }
+        if (left == .float and right == .float) {
+            return self.executeBinaryFloatOp(op, left.float.value, right.float.value);
+        }
+        if (left == .int and right == .float) {
+            return self.executeBinaryFloatOp(op, @floatFromInt(left.int.value), right.float.value);
+        }
+        if (left == .float and right == .int) {
+            return self.executeBinaryFloatOp(op, left.float.value, @floatFromInt(right.int.value));
+        }
         if (op == .add and left == .string and right == .string) {
             return self.executeStringConcatenation(left.string.value, right.string.value);
         }
@@ -313,6 +341,17 @@ pub const Vm = struct {
             else => unreachable,
         };
         self.push(.{ .int = Object.Integer.init(result) });
+    }
+
+    fn executeBinaryFloatOp(self: *Vm, op: code.Opcode, left: f64, right: f64) !void {
+        const result = switch (op) {
+            .add => left + right,
+            .sub => left - right,
+            .mul => left * right,
+            .div => left / right,
+            else => unreachable,
+        };
+        self.push(.{ .float = Object.Float.init(result) });
     }
 
     fn executeStringConcatenation(self: *Vm, left: []const u8, right: []const u8) !void {

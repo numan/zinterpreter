@@ -160,6 +160,9 @@ pub const Evaluator = struct {
             .integer_literal => |integer_literal| wrapResult(.value, .{
                 .int = Object.Integer.init(integer_literal.value),
             }),
+            .float_literal => |float_literal| wrapResult(.value, .{
+                .float = Object.Float.init(float_literal.value),
+            }),
             .function_literal => |*function_literal| try self.evalFunctionLiteral(function_literal),
             .call_expression => |*call_expression| try self.evalCallExpression(call_expression),
             .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
@@ -402,6 +405,16 @@ pub const Evaluator = struct {
         return switch (right.*) {
             .int => |*right_ptr| switch (left.*) {
                 .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),
+                .float => |*left_ptr| evalFloatInfixExpression(expression, left_ptr, &Object.Float.init(@floatFromInt(right_ptr.value))),
+                else => self.errorObj("type mismatch: {s} {s} {s}", .{
+                    left.typeName(),
+                    expression.token.ch,
+                    right.typeName(),
+                }),
+            },
+            .float => |*right_ptr| switch (left.*) {
+                .float => |*left_ptr| evalFloatInfixExpression(expression, left_ptr, right_ptr),
+                .int => |*left_ptr| evalFloatInfixExpression(expression, &Object.Float.init(@floatFromInt(left_ptr.value)), right_ptr),
                 else => self.errorObj("type mismatch: {s} {s} {s}", .{
                     left.typeName(),
                     expression.token.ch,
@@ -453,6 +466,20 @@ pub const Evaluator = struct {
         };
     }
 
+    fn evalFloatInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Float, right: *const Object.Float) Object {
+        return switch (expression.token.token_type) {
+            .plus => .{ .float = Object.Float.init(left.value + right.value) },
+            .minus => .{ .float = Object.Float.init(left.value - right.value) },
+            .asterisk => .{ .float = Object.Float.init(left.value * right.value) },
+            .slash => .{ .float = Object.Float.init(left.value / right.value) },
+            .lt => if (left.value < right.value) TRUE else FALSE,
+            .gt => if (left.value > right.value) TRUE else FALSE,
+            .eq => if (left.value == right.value) TRUE else FALSE,
+            .not_eq => if (left.value != right.value) TRUE else FALSE,
+            else => NULL,
+        };
+    }
+
     fn evalBoolInfixExpression(expression: *const ExpressionType.InfixExpression, left: *const Object.Boolean, right: *const Object.Boolean) Object {
         return switch (expression.token.token_type) {
             .eq => if (left.value == right.value) TRUE else FALSE,
@@ -496,6 +523,7 @@ pub const Evaluator = struct {
     fn evalMinusPrefixOperatorExpression(self: *Self, right: Object) EvalError!Object {
         return switch (right) {
             .int => |integer| .{ .int = Object.Integer.init(-integer.value) },
+            .float => |float_val| .{ .float = Object.Float.init(-float_val.value) },
             else => try self.errorObj("unknown operator: -{s}", .{right.typeName()}),
         };
     }

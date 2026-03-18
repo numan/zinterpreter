@@ -33,6 +33,7 @@ comptime {
     _ = @import("lib/evaluator_test.zig");
     _ = @import("lib/gc_test.zig");
     _ = @import("lib/object_test.zig");
+    _ = @import("lib/code_test.zig");
     _ = @import("lib/compiler_test.zig");
     _ = @import("lib/vm_test.zig");
     _ = @import("lib/symbol_table_test.zig");

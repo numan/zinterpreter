@@ -151,6 +151,7 @@ pub const Compiler = struct {
             .array_literal => |*val| self.compileArrayLiteral(val),
             .hash_literal => |*val| self.compileHashLiteral(val),
             .integer_literal => |*val| self.compileIntegerLiteral(val),
+            .float_literal => |*val| self.compileFloatLiteral(val),
             .boolean_literal => |*val| self.compileBooleanLiteral(val),
             .infix_expression => |*val| self.compileInfixExpression(val),
             .prefix_expression => |*val| self.compilePrefixExpression(val),
@@ -226,6 +227,12 @@ pub const Compiler = struct {
     fn compileIntegerLiteral(self: *Self, int_literal: *const ExpressionType.IntegerLiteral) !void {
         const int_obj: Object = .{ .int = Object.Integer.init(int_literal.value) };
         const index = try self.addConstant(int_obj);
+        _ = try self.emit(.constant, &.{index});
+    }
+
+    fn compileFloatLiteral(self: *Self, float_literal: *const ExpressionType.FloatLiteral) !void {
+        const float_obj: Object = .{ .float = Object.Float.init(float_literal.value) };
+        const index = try self.addConstant(float_obj);
         _ = try self.emit(.constant, &.{index});
     }
 

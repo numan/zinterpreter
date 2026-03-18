@@ -8,6 +8,7 @@ pub const BuiltinError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub const Object = union(enum) {
     int: Integer,
+    float: Float,
     bool: Boolean,
     null: Null,
     err: Error,
@@ -82,6 +83,19 @@ pub const Object = union(enum) {
         }
 
         pub fn inspect(self: *const Object.Integer, writer: *std.Io.Writer) !void {
+            try writer.print("{d}", .{self.value});
+            try writer.flush();
+        }
+    };
+
+    pub const Float = struct {
+        value: f64,
+
+        pub fn init(value: f64) Float {
+            return Float{ .value = value };
+        }
+
+        pub fn inspect(self: *const Object.Float, writer: *std.Io.Writer) !void {
             try writer.print("{d}", .{self.value});
             try writer.flush();
         }

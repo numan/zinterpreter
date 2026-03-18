@@ -1335,3 +1335,89 @@ test "function literal with name" {
 
     try testing.expectEqualStrings("myFunction", function.name orelse return error.TestUnexpectedResult);
 }
+
+fn testFloatLiteral(val: *const ast.ExpressionType, literal_value: f64) !void {
+    switch (val.*) {
+        .float_literal => |exp| {
+            try testing.expectEqual(literal_value, exp.value);
+        },
+        else => {
+            std.debug.print("Expected a float literal. Got something else.", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+}
+
+test "parse float literal" {
+    const allocator = testing.allocator;
+
+    const tests = [_]struct {
+        input: []const u8,
+        expected: f64,
+    }{
+        .{ .input = "3.14;", .expected = 3.14 },
+        .{ .input = "10.;", .expected = 10.0 },
+        .{ .input = "3.;", .expected = 3.0 },
+        .{ .input = "10.5;", .expected = 10.5 },
+    };
+
+    for (tests) |case| {
+        var lexer = Lexer.init(case.input);
+        var parser = Parser.init(allocator, &lexer);
+        defer parser.deinit();
+        const program = try parser.parse();
+
+        try testing.expectEqual(@as(usize, 1), program.statements.items.len);
+        const stmt = program.statements.items[0];
+        const exp = switch (stmt) {
+            .expression => |e| &e.expression,
+            else => return error.TestUnexpectedResult,
+        };
+        try testFloatLiteral(exp, case.expected);
+    }
+}
+
+test "parse float in prefix expression" {
+    const allocator = testing.allocator;
+    var lexer = Lexer.init("-3.14;");
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+
+    try testing.expectEqual(@as(usize, 1), program.statements.items.len);
+    const stmt = program.statements.items[0];
+    const exp = switch (stmt) {
+        .expression => |e| &e.expression,
+        else => return error.TestUnexpectedResult,
+    };
+    switch (exp.*) {
+        .prefix_expression => |prefix| {
+            try testing.expectEqualStrings("-", prefix.operator);
+            try testFloatLiteral(&prefix.right.expression, 3.14);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "parse float in infix expression" {
+    const allocator = testing.allocator;
+    var lexer = Lexer.init("1.5 + 2.5;");
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+
+    try testing.expectEqual(@as(usize, 1), program.statements.items.len);
+    const stmt = program.statements.items[0];
+    const exp = switch (stmt) {
+        .expression => |e| &e.expression,
+        else => return error.TestUnexpectedResult,
+    };
+    switch (exp.*) {
+        .infix_expression => |infix| {
+            try testFloatLiteral(&infix.left.expression, 1.5);
+            try testing.expectEqualStrings("+", infix.operator);
+            try testFloatLiteral(&infix.right.expression, 2.5);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}

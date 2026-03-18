@@ -18,6 +18,7 @@ const HashEntry = struct {
 
 const Expected = union(enum) {
     int: i64,
+    float: f64,
     boolean: bool,
     string: []const u8,
     int_array: []const i64,
@@ -88,9 +89,21 @@ fn testErrorObject(expected_msg: []const u8, obj: Object) !void {
     try testing.expectEqualStrings(expected_msg, err_obj.msg);
 }
 
+fn testFloatObject(expected: f64, obj: Object) !void {
+    const float = switch (obj) {
+        .float => |value| value,
+        else => {
+            std.debug.print("object is not Float. got={s}\n", .{obj.typeName()});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqual(expected, float.value);
+}
+
 fn testExpectedObject(expected: Expected, obj: Object) !void {
     switch (expected) {
         .int => |val| try testIntegerObject(val, obj),
+        .float => |val| try testFloatObject(val, obj),
         .boolean => |val| try testBooleanObject(val, obj),
         .string => |val| try testStringObject(val, obj),
         .err => |val| try testErrorObject(val, obj),
@@ -738,6 +751,47 @@ test "recursive fibonacci" {
             ,
             .expected = .{ .int = 610 },
         },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "float arithmetic" {
+    const tests = [_]VmTestCase{
+        .{ .input = "1.5", .expected = .{ .float = 1.5 } },
+        .{ .input = "10.", .expected = .{ .float = 10.0 } },
+        .{ .input = "3.", .expected = .{ .float = 3.0 } },
+        .{ .input = "1.5 + 2.5", .expected = .{ .float = 4.0 } },
+        .{ .input = "3.0 - 1.0", .expected = .{ .float = 2.0 } },
+        .{ .input = "2.0 * 3.0", .expected = .{ .float = 6.0 } },
+        .{ .input = "7.0 / 2.0", .expected = .{ .float = 3.5 } },
+        .{ .input = "-3.14", .expected = .{ .float = -3.14 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "mixed int/float arithmetic" {
+    const tests = [_]VmTestCase{
+        .{ .input = "1 + 2.5", .expected = .{ .float = 3.5 } },
+        .{ .input = "3.14 * 2", .expected = .{ .float = 6.28 } },
+        .{ .input = "10 - 1.5", .expected = .{ .float = 8.5 } },
+        .{ .input = "7.0 / 2", .expected = .{ .float = 3.5 } },
+        .{ .input = "7 / 2", .expected = .{ .int = 3 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "float comparisons" {
+    const tests = [_]VmTestCase{
+        .{ .input = "1.5 < 2.5", .expected = .{ .boolean = true } },
+        .{ .input = "2.5 < 1.5", .expected = .{ .boolean = false } },
+        .{ .input = "3.0 == 3.0", .expected = .{ .boolean = true } },
+        .{ .input = "3.0 != 3.0", .expected = .{ .boolean = false } },
+        .{ .input = "1.0 != 2.0", .expected = .{ .boolean = true } },
+        .{ .input = "1 < 2.5", .expected = .{ .boolean = true } },
+        .{ .input = "2.5 == 2.5", .expected = .{ .boolean = true } },
     };
 
     try runVmTests(&tests);
