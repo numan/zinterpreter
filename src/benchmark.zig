@@ -12,17 +12,19 @@ const SymbolTable = lib.symbol_table.SymbolTable;
 
 const input =
     \\let fibonacci = fn(x) {
-    \\    if (x == 0) {
-    \\        0
+    \\    if (x < 2) {
+    \\        return x;
     \\    } else {
-    \\        if (x == 1) {
-    \\            return 1;
-    \\        } else {
-    \\            fibonacci(x - 1) + fibonacci(x - 2);
-    \\        }
+    \\        fibonacci(x - 1) + fibonacci(x - 2);
     \\    }
     \\};
-    \\fibonacci(35);
+    \\let loop = fn(i) {
+    \\    if (i > 0) {
+    \\        puts(fibonacci(28));
+    \\        loop(i - 1);
+    \\    }
+    \\};
+    \\loop(5);
 ;
 
 pub fn main(init: std.process.Init) !void {
@@ -45,9 +47,8 @@ pub fn main(init: std.process.Init) !void {
     // Parse the program
     var lexer = Lexer.init(input);
     var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
     const program = try parser.parse();
-
-    var result: Object = undefined;
 
     if (std.mem.eql(u8, engine, "vm")) {
         // Compile
@@ -63,24 +64,14 @@ pub fn main(init: std.process.Init) !void {
         var vm_arena = std.heap.ArenaAllocator.init(allocator);
         defer vm_arena.deinit();
         var globals: [lib.vm.globals_size]Object = undefined;
-        var discard_writer = std.Io.Writer.Allocating.init(allocator);
-        defer discard_writer.deinit();
-        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), &discard_writer.writer);
+        var vm = try Vm.init(comp.bytecode(), &globals, vm_arena.allocator(), stdout);
 
         // Time only the VM execution
         const start = std.Io.Clock.Timestamp.now(init.io, .awake);
         try vm.run();
         const duration = start.untilNow(init.io);
 
-        result = vm.lastPoppedStackElem() orelse {
-            try stdout.print("error: no result on stack\n", .{});
-            try stdout.flush();
-            return;
-        };
-
-        try stdout.print("engine=vm, result=", .{});
-        try result.inspect(stdout);
-        try stdout.print(", duration=", .{});
+        try stdout.print("engine=vm, duration=", .{});
         try duration.raw.format(stdout);
         try stdout.print("\n", .{});
     } else {
@@ -88,19 +79,15 @@ pub fn main(init: std.process.Init) !void {
         var collector = Gc.init(allocator);
         defer collector.deinit();
         const env = try collector.allocEnvironment(null);
-        var discard_writer = std.Io.Writer.Allocating.init(allocator);
-        defer discard_writer.deinit();
-        var evaluator = Evaluator.init(env, &collector, &discard_writer.writer);
+        var evaluator = Evaluator.init(env, &collector, stdout);
         defer evaluator.deinit();
 
         // Time only the evaluation
         const start = std.Io.Clock.Timestamp.now(init.io, .awake);
-        result = try evaluator.eval(program);
+        _ = try evaluator.eval(program);
         const duration = start.untilNow(init.io);
 
-        try stdout.print("engine=eval, result=", .{});
-        try result.inspect(stdout);
-        try stdout.print(", duration=", .{});
+        try stdout.print("engine=eval, duration=", .{});
         try duration.raw.format(stdout);
         try stdout.print("\n", .{});
     }
